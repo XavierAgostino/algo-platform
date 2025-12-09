@@ -1,16 +1,16 @@
-# Shortest Path Algorithm Visualizer
+# AlgoPlatform
 
-An interactive, educational web application for visualizing and understanding shortest path algorithms through step-by-step visual demonstrations. Built to make graph algorithms accessible to students, educators, and learners worldwide.
+A comprehensive, interactive platform for visualizing and understanding computer science algorithms through step-by-step visual demonstrations. Built to make complex algorithms accessible to students, educators, and learners worldwide.
 
-![Shortest Path Algorithm Visualizer](./homescreen.png)
+![AlgoPlatform Dashboard](./homescreen.png)
 
-**Live Demo: [shortest-path-visualizer-pi.vercel.app](https://shortest-path-visualizer-pi.vercel.app)**
+**Live Demo: [algo-platform.vercel.app](https://algo-platform.vercel.app)**
 
 ## Overview
 
-The Shortest Path Algorithm Visualizer is a comprehensive educational tool designed to help students understand how graph algorithms work by providing real-time visual feedback and detailed explanations. Whether you're learning algorithms for the first time, preparing for exams, or teaching a computer science course, this tool provides an intuitive way to explore Dijkstra's algorithm and the Bellman-Ford algorithm.
+AlgoPlatform is an educational web application designed to help students understand fundamental computer science algorithms by providing real-time visual feedback, detailed explanations, and interactive exploration. What began as a tool for visualizing shortest path algorithms has evolved into a comprehensive platform supporting multiple algorithm categories.
 
-The application is fully responsive and works seamlessly on desktop, tablet, and mobile devices, making it accessible to learners anywhere in the world.
+The application is fully responsive and works seamlessly on desktop, tablet, and mobile devices, making algorithm visualization accessible to learners anywhere in the world.
 
 ![Mobile Interface](./mobile.png)
 
@@ -18,43 +18,62 @@ The application is fully responsive and works seamlessly on desktop, tablet, and
 
 While studying for Harvard's COMPSCI 1240 (Design and Analysis of Algorithms) Midterm, I found myself struggling to fully understand the nuances of shortest path algorithms by just reading textbooks or watching lecture videos. I searched for interactive tools that could help me visualize these algorithms step-by-step, but couldn't find any that matched what I needed.
 
-So I decided to build one myself! This project was born out of a genuine need to better understand these fundamental algorithms through visualization, and I'm sharing it in the hope that it can help other students facing similar challenges.
+So I decided to build one myself. This project was born out of a genuine need to better understand fundamental algorithms through visualization. As I continued developing the tool and exploring additional algorithm categories, the project naturally evolved into a platform—a unified hub where students can access multiple algorithm visualizers in one place.
+
+## Platform Architecture
+
+AlgoPlatform is built on Next.js with a modular architecture that allows for easy expansion. Each algorithm category is implemented as a separate tool within the platform, accessible through a centralized dashboard.
+
+### Current Tools
+
+**Pathfinding Algorithms**
+- Dijkstra's Algorithm: Optimized for graphs with non-negative edge weights, visualizes priority queue operations and greedy behavior
+- Bellman-Ford Algorithm: Handles graphs with negative edge weights, detects negative cycles, demonstrates dynamic programming approach
+
+### Coming Soon
+
+**Network Design Algorithms**
+- Prim's Algorithm: Minimum spanning tree construction using a greedy approach
+- Kruskal's Algorithm: Minimum spanning tree construction using union-find data structures
 
 ## Educational Value
 
-This visualizer addresses common challenges students face when learning graph algorithms:
+This platform addresses common challenges students face when learning algorithms:
 
 - **Visual Learning**: See algorithms execute step-by-step rather than just reading pseudocode
 - **Interactive Exploration**: Control the pace of execution and examine each step in detail
 - **Real-time Feedback**: Understand how data structures update as algorithms progress
 - **Multiple Learning Modes**: Switch between exploration (step-by-step) and view (final result) modes
 - **Custom Graph Creation**: Build your own graphs to test understanding and explore edge cases
+- **Unified Platform**: Access multiple algorithm visualizers from a single interface
 
 ## Features
 
-### Algorithm Implementations
+### Pathfinding Visualizer
 
-**Dijkstra's Algorithm**
+**Algorithm Implementations**
+
+Dijkstra's Algorithm
 - Optimized for graphs with non-negative edge weights
 - Visualizes priority queue (min heap) operations
 - Shows distance updates and node visitation order
 - Demonstrates greedy algorithm behavior
 
-**Bellman-Ford Algorithm**
+Bellman-Ford Algorithm
 - Handles graphs with negative edge weights
 - Detects and highlights negative cycles
 - Shows iteration-by-iteration progress
 - Illustrates dynamic programming approach
 
-### Visualization Features
+**Visualization Features**
 
-**Interactive Graph Display**
+Interactive Graph Display
 - Smooth Bezier curve edges for modern, readable graphs
 - Color-coded nodes and edges indicating algorithm state
 - Real-time distance labels on nodes
 - Clear visual distinction between visited, candidate, and shortest path edges
 
-**Algorithm State Panel**
+Algorithm State Panel
 - Current step counter with progress tracking
 - Distance array visualization with highlighting
 - Priority queue display (Dijkstra) or iteration progress (Bellman-Ford)
@@ -63,14 +82,14 @@ This visualizer addresses common challenges students face when learning graph al
 
 **Graph Creation Modes**
 
-**Auto-Generate Mode**
+Auto-Generate Mode
 - Configurable node count (4-15 nodes)
 - Adjustable edge density
 - Customizable weight ranges
 - Guaranteed graph connectivity
 - Optimized layouts for readability
 
-**Manual Design Mode**
+Manual Design Mode
 - Create custom graphs from scratch
 - Add and remove nodes interactively
 - Draw edges with custom weights
@@ -78,15 +97,15 @@ This visualizer addresses common challenges students face when learning graph al
 - Full control over graph structure
 - Available on both desktop and mobile devices
 
-### User Controls
+**User Controls**
 
-**Playback Controls**
+Playback Controls
 - Start/Pause: Control algorithm execution
 - Step: Advance one step at a time for detailed study
 - Reset: Clear execution and start fresh
 - View Mode: Instantly see final shortest paths
 
-**Visualization Modes**
+Visualization Modes
 - Explore Mode: Step through algorithm execution with full control
 - View Mode: Display final results immediately for quick verification
 
@@ -97,11 +116,34 @@ This visualizer addresses common challenges students face when learning graph al
 - Gesture-based pan and zoom
 - Mobile-specific layout adjustments
 
+### Platform Features
+
+**Centralized Dashboard**
+- Clean, modern interface for selecting algorithm tools
+- Visual previews of each tool
+- Quick navigation between different visualizers
+- Consistent design language across all tools
+
+**Theme Support**
+- Light and dark mode with system preference detection
+- Smooth theme transitions
+- Persistent theme preferences
+- Optimized color schemes for both modes
+
+**Responsive Design**
+- Fully responsive across all screen sizes
+- Mobile-first approach
+- Optimized touch interactions
+- Adaptive layouts for different devices
+
 ## Technologies
 
-- **React.js**: Component-based UI architecture
+- **Next.js 15**: React framework with App Router for modern web development
+- **React 19**: Component-based UI architecture with latest features
 - **Tailwind CSS**: Utility-first styling with responsive design
-- **JavaScript (ES6+)**: Modern JavaScript features
+- **Framer Motion**: Smooth animations and transitions
+- **next-themes**: Theme management with system preference support
+- **TypeScript/JavaScript**: Modern JavaScript features with type safety
 - **SVG Rendering**: Scalable vector graphics for crisp visualization
 - **Local Storage**: Persistent user preferences
 
@@ -109,8 +151,8 @@ This visualizer addresses common challenges students face when learning graph al
 
 ### Live Demo
 
-The easiest way to use the visualizer is through the live demo:
-**[shortest-path-visualizer-pi.vercel.app](https://shortest-path-visualizer-pi.vercel.app)**
+The easiest way to use AlgoPlatform is through the live demo:
+**[algo-platform.vercel.app](https://algo-platform.vercel.app)**
 
 The application works in any modern web browser on desktop, tablet, or mobile devices. No installation required.
 
@@ -119,15 +161,15 @@ The application works in any modern web browser on desktop, tablet, or mobile de
 If you want to run the application locally or contribute to the project:
 
 **Prerequisites**
-- Node.js version 14.0 or higher
-- npm version 6.0 or higher
+- Node.js version 18.0 or higher
+- npm version 9.0 or higher
 
 **Installation Steps**
 
 1. Clone the repository
    ```bash
-   git clone https://github.com/yourusername/shortest-path-visualizer.git
-   cd shortest-path-visualizer
+   git clone https://github.com/yourusername/algo-platform.git
+   cd algo-platform
    ```
 
 2. Install dependencies
@@ -137,20 +179,27 @@ If you want to run the application locally or contribute to the project:
 
 3. Start the development server
    ```bash
-   npm start
+   npm run dev
    ```
 
 4. Open your browser and navigate to `http://localhost:3000`
 
 ## How to Use
 
-### Basic Workflow
+### Platform Navigation
+
+1. **Access the Dashboard**: The home page displays all available algorithm tools
+2. **Select a Tool**: Click on any tool card to navigate to its visualizer
+3. **Navigate Between Tools**: Use the home button in the navigation bar to return to the dashboard
+4. **Switch Themes**: Use the theme toggle in the top-right corner or navigation bar
+
+### Pathfinding Visualizer Workflow
 
 1. **Select an Algorithm**: Choose between Dijkstra's algorithm or Bellman-Ford from the top navigation
 2. **Configure Graph Settings**: Click the settings icon to open the configuration panel
 3. **Choose Graph Mode**:
-   - **Auto-Generate**: Adjust parameters and generate random graphs
-   - **Manual Design**: Create custom graphs using the floating toolbar (desktop) or drawer controls (mobile)
+   - Auto-Generate: Adjust parameters and generate random graphs
+   - Manual Design: Create custom graphs using the floating toolbar (desktop) or drawer controls (mobile)
 4. **Set Source Node**: Select a starting node for the algorithm
 5. **Start Visualization**: Use the Start button to begin automatic execution, or Step to advance manually
 6. **Observe Algorithm State**: Watch the left panel update with distances, queue states, and pseudocode highlighting
@@ -179,33 +228,42 @@ If you want to run the application locally or contribute to the project:
 - Create graphs with negative edges to see Bellman-Ford's capabilities
 - Try different edge densities to see how it affects algorithm behavior
 - Use View Mode to verify your understanding of the final result
+- Explore multiple tools to understand relationships between different algorithm categories
 
 ## Project Structure
 
 ```
-src/
-├── components/
-│   └── ShortestPathVisualizer/
-│       ├── ShortestPathVisualizer.js      # Main application component
-│       ├── GraphRenderer.js               # SVG graph rendering
-│       ├── AlgorithmVisualizer.js         # Algorithm state visualization
-│       ├── algorithm-viz/                 # Sub-components for algorithm display
-│       │   ├── CurrentStepCard.js
-│       │   ├── DistanceTable.js
-│       │   ├── MinHeapVisualization.js
-│       │   ├── IterationProgress.js
-│       │   ├── PseudocodeHighlighter.js
-│       │   └── EdgeRelaxationCard.js
-│       ├── GraphGeneration.js             # Graph creation logic
-│       ├── ManualModeToolbar.js           # Manual graph creation toolbar
-│       ├── WeightInputPopover.js           # Edge weight input interface
-│       ├── MobileControls.js               # Mobile-specific controls
-│       ├── MobileMetrics.js                # Mobile metrics display
-│       ├── DijkstraSteps.js                # Dijkstra algorithm implementation
-│       └── BellmanFordSteps.js             # Bellman-Ford algorithm implementation
-├── constants/
-│   └── graphConfig.js                     # Configuration constants
-└── App.js                                 # Root component
+app/
+├── layout.js                    # Root layout with theme provider
+├── page.js                      # Dashboard/home page
+├── shortest-path/
+│   └── page.js                  # Pathfinding visualizer route
+└── globals.css                  # Global styles and theme variables
+
+components/
+├── ShortestPathVisualizer/      # Pathfinding tool components
+│   ├── ShortestPathVisualizer.js
+│   ├── GraphRenderer.js
+│   ├── AlgorithmVisualizer.js
+│   ├── algorithm-viz/          # Algorithm state visualization components
+│   ├── GraphGeneration.js
+│   ├── ManualModeToolbar.js
+│   ├── MobileControls.js
+│   ├── DijkstraSteps.js
+│   └── BellmanFordSteps.js
+├── ui/                          # Shared UI components
+│   ├── floating-nav.jsx
+│   ├── theme-toggle.jsx
+│   ├── bento-grid.jsx
+│   ├── border-beam.jsx
+│   └── retro-grid.jsx
+└── theme-provider.jsx           # Theme management
+
+constants/
+└── graphConfig.js              # Configuration constants
+
+lib/
+└── utils.js                    # Utility functions
 ```
 
 ## Use Cases
@@ -216,6 +274,8 @@ src/
 - Test your understanding by creating custom graphs
 - Prepare for exams with interactive practice
 - Explore edge cases like negative cycles and disconnected graphs
+- Compare different algorithms within the same category
+- Access multiple algorithm tools from a single platform
 
 ### For Educators
 
@@ -223,6 +283,7 @@ src/
 - Assign graph creation exercises using manual mode
 - Show real-time algorithm state changes
 - Compare different algorithms side-by-side
+- Use the platform as a teaching resource for multiple algorithm topics
 
 ### For Self-Learners
 
@@ -230,6 +291,20 @@ src/
 - Experiment with different graph configurations
 - Understand the relationship between pseudocode and execution
 - Build intuition for algorithm behavior
+- Explore multiple algorithm categories in one place
+
+## Roadmap
+
+The platform is actively being developed with plans to add:
+
+- Minimum Spanning Tree algorithms (Prim's, Kruskal's)
+- Additional pathfinding algorithms (A*, Floyd-Warshall)
+- Sorting algorithm visualizations
+- Graph traversal algorithms (DFS, BFS)
+- Dynamic programming visualizations
+- Algorithm comparison modes
+- Export/import graph functionality
+- Enhanced educational content and tutorials
 
 ## Contributing
 
@@ -246,7 +321,8 @@ This project is built as an educational tool for the global learning community. 
 
 **Contribution Ideas**
 
-- Additional algorithms (A*, Floyd-Warshall, Johnson's algorithm)
+- Additional algorithm implementations
+- New algorithm categories and tools
 - Enhanced visualization options
 - Performance optimizations
 - Accessibility improvements
@@ -254,6 +330,7 @@ This project is built as an educational tool for the global learning community. 
 - Additional educational content and tutorials
 - Export/import graph functionality
 - Algorithm comparison mode
+- Mobile experience improvements
 
 ## Browser Support
 
@@ -266,11 +343,12 @@ The application is tested and works on:
 
 ## Performance
 
-The visualizer is optimized for performance:
+The platform is optimized for performance:
 - Memoized calculations to prevent unnecessary re-renders
 - Efficient graph rendering with SVG
 - Responsive design that adapts to screen size
 - Smooth animations and transitions
+- Optimized bundle sizes with Next.js code splitting
 
 ## Accessibility
 
@@ -279,6 +357,7 @@ The visualizer is optimized for performance:
 - Clear visual indicators
 - Responsive touch targets for mobile
 - Screen reader friendly structure
+- Theme support for reduced eye strain
 
 ## License
 
@@ -288,7 +367,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 This project was developed as part of coursework at Harvard University's Computer Science department. Special thanks to the professors and teaching fellows who provided guidance and inspiration.
 
-The visualizer is inspired by the need for better educational tools in algorithm visualization and aims to serve students and educators worldwide.
+The platform is inspired by the need for better educational tools in algorithm visualization and aims to serve students and educators worldwide.
 
 ## Support
 
@@ -296,4 +375,4 @@ For questions, bug reports, or feature requests, please open an issue on the Git
 
 ---
 
-Built with React and Tailwind CSS. Designed for education.
+Built with Next.js, React, and Tailwind CSS. Designed for education.
