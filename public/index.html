@@ -16,5 +16,13 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <!-- React Grab for development only (Cursor AI context) -->
+    <script>
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        var script = document.createElement('script');
+        script.src = 'https://unpkg.com/react-grab/dist/index.global.js';
+        document.body.appendChild(script);
+      }
+    </script>
   </body>
 </html>

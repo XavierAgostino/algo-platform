@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 // eslint-disable-next-line no-unused-vars
 import _ from "lodash";
 
@@ -7,14 +7,26 @@ import { generateRandomGraph } from "./GraphGeneration";
 import { generateDijkstraSteps } from "./DijkstraSteps";
 import { generateBellmanFordSteps } from "./BellmanFordSteps";
 import AlgorithmVisualizer from "./AlgorithmVisualizer";
+// Custom hook available for algorithm runner logic (useAlgorithmRunner)
+// Can be used to further separate concerns in future refactoring
+// import { useAlgorithmRunner } from "./hooks/useAlgorithmRunner";
 
 // Import mobile components
-import CollapsibleSection from "./CollapsibleSection";
-import MobileTabBar from "./MobileTabBar";
-import MobileSettings from "./MobileSettings";
-import MobileCompare from "./MobileCompare";
 import MobileControls from "./MobileControls";
 import MobileMetrics from "./MobileMetrics";
+import ManualModeToolbar from "./ManualModeToolbar";
+import WeightInputPopover from "./WeightInputPopover";
+
+// Import shadcn/ui components
+import { FloatingNav, FloatingNavItem, FloatingNavDivider } from "../ui/floating-nav";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from "../ui/drawer";
+import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
+import { Slider } from "../ui/slider";
+import { Switch } from "../ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
+
+// Import lucide-react icons
+import { Play, Pause, SkipForward, RotateCcw, Eye, EyeOff, Settings, RefreshCw, HelpCircle, Route } from "lucide-react";
 
 const ShortestPathVisualizer = () => {
   // =========================
@@ -54,7 +66,7 @@ const ShortestPathVisualizer = () => {
   });
   const [animationSpeed, setAnimationSpeed] = useState(1000);
   const [showLegend, setShowLegend] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Algorithm-specific data structures
   const [distanceArray, setDistanceArray] = useState({});
@@ -80,7 +92,6 @@ const ShortestPathVisualizer = () => {
 
   // Mobile-specific states
   const [isMobile, setIsMobile] = useState(false);
-  const [activeTab, setActiveTab] = useState("visualization"); // 'visualization', 'settings', 'compare'
   const [graphTransform, setGraphTransform] = useState({
     scale: 1,
     x: 0,
@@ -88,6 +99,13 @@ const ShortestPathVisualizer = () => {
   });
   const [isDragging, setIsDragging] = useState(false);
   const [touchStartInfo, setTouchStartInfo] = useState(null);
+
+  // Weight input popover state
+  const [weightPopover, setWeightPopover] = useState({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    pendingEdge: null, // { source, target }
+  });
 
   // Refs
   const svgRef = useRef(null);
@@ -100,11 +118,6 @@ const ShortestPathVisualizer = () => {
     const checkMobile = () => {
       const isMobileView = window.innerWidth < 768;
       setIsMobile(isMobileView);
-
-      // If switching to mobile, ensure sidebar is closed by default
-      if (isMobileView && showSidebar) {
-        setShowSidebar(false);
-      }
     };
 
     // Check on mount
@@ -113,7 +126,7 @@ const ShortestPathVisualizer = () => {
     // Add resize listener
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
-  }, [showSidebar]);
+  }, []);
 
   // =========================
   //   TOUCH HANDLING FOR GRAPH
@@ -187,21 +200,34 @@ const ShortestPathVisualizer = () => {
   //   TOGGLE LEGEND & SIDEBAR
   // =========================
   const toggleLegend = () => setShowLegend(!showLegend);
-  const toggleSidebar = () => setShowSidebar(!showSidebar);
 
   // =========================
   //   TOGGLE VISUALIZATION MODE
   // =========================
   const toggleVisualizationMode = () => {
     if (visualizationMode === "explore") {
+      // Switch to View mode - show the final answer immediately
       setVisualizationMode("view");
+      // Stop any running animation
+      setIsRunning(false);
+      setIsPaused(false);
       setExplanation(
-        "Switched to View mode. You can now examine the paths without modifying the algorithm state."
+        "View Mode: See the shortest paths instantly. Click the toggle to switch back to Explore mode."
       );
+      // Show the answer
+      handleShowAnswer();
     } else {
+      // Switch back to Explore mode
       setVisualizationMode("explore");
+      // Reset the graph state so user can step through again
+      setShowAnswer(false);
+      setConfirmedPathEdges(new Set());
+      const resetEdges = edges.map((edge) => ({ ...edge, status: "unvisited" }));
+      setEdges(resetEdges);
+      setCurrentStep(0);
+      setSteps([]);
       setExplanation(
-        "Switched to Explore mode. You can now step through the algorithm execution."
+        'Explore Mode: Step through the algorithm to see how it works. Press "Start" to begin.'
       );
     }
   };
@@ -294,10 +320,6 @@ const ShortestPathVisualizer = () => {
     setSelectedSourceNode(newParams.sourceNode);
     setSelectedDestNode(null);
 
-    // If in mobile mode, switch to visualization tab after generating
-    if (isMobile) {
-      setActiveTab("visualization");
-    }
   };
 
   // =========================
@@ -519,9 +541,9 @@ const ShortestPathVisualizer = () => {
   };
 
   // =========================
-  //   APPLY STEP
+  //   APPLY STEP (memoized for performance)
   // =========================
-  const applyStep = (stepIndex) => {
+  const applyStep = useCallback((stepIndex) => {
     if (stepIndex < 0 || stepIndex >= steps.length) return;
     const step = steps[stepIndex];
   
@@ -543,10 +565,10 @@ const ShortestPathVisualizer = () => {
       }
     });
   
-    // NEW: Track edge being relaxed
+    // Track edge being relaxed
     setCurrentRelaxingEdge(step.currentEdgeBeingRelaxed || null);
     
-    // NEW: Track distance updates
+    // Track distance updates
     setRecentlyUpdatedDistances(step.updatedDistances || []);
   
     // Update confirmed path edges if this step adds to the path
@@ -573,7 +595,7 @@ const ShortestPathVisualizer = () => {
     setDistanceArray({ ...(step.distanceArray || {}) });
     setIterationCount(step.iterationCount || 0);
     setNegativeCycleDetected(step.negativeCycleDetected || false);
-  };
+  }, [steps, edges, confirmedPathEdges]);
 
   // =========================
   //   SHOW FINAL SHORTEST PATHS
@@ -756,6 +778,17 @@ const ShortestPathVisualizer = () => {
     setTempNode(null);
   };
 
+  // Cancel any active manual mode operation
+  const handleCancelOperation = useCallback(() => {
+    setIsAddingNode(false);
+    setIsAddingEdge(false);
+    setIsDeletingNode(false);
+    setIsDeletingEdge(false);
+    setIsSelectingSource(false);
+    setIsSelectingDest(false);
+    setTempNode(null);
+  }, []);
+
   // When clicking on the SVG in "Add Node" mode
   const handleSvgClick = (e) => {
     if (!isAddingNode) return;
@@ -831,47 +864,84 @@ const ShortestPathVisualizer = () => {
         setTempNode(nodeId);
       } else {
         if (tempNode !== nodeId) {
-          const promptText =
-            algorithm === "bellmanford" && graphParams.allowNegativeEdges
-              ? "Enter edge weight (can be negative):"
-              : "Enter edge weight (1-99):";
-          const weight = prompt(promptText, "10");
-          if (weight !== null) {
-            const weightNum = parseFloat(weight);
-            let validWeight = true;
-            let errorMsg = "";
-
-            if (isNaN(weightNum)) {
-              validWeight = false;
-              errorMsg = "Invalid weight. Must be a number.";
-            } else if (algorithm === "dijkstra" && weightNum < 0) {
-              validWeight = false;
-              errorMsg = "Dijkstra doesn't support negative edges.";
-            }
-
-            if (validWeight) {
-              const edgeId = `${tempNode}-${nodeId}`;
-              if (!edges.some((e) => e.id === edgeId)) {
-                setEdges([
-                  ...edges,
-                  {
-                    id: edgeId,
-                    source: tempNode,
-                    target: nodeId,
-                    weight: weightNum,
-                    status: "unvisited",
-                  },
-                ]);
-              }
-            } else {
-              alert(errorMsg);
-            }
+          // Get position for the popover (between the two nodes)
+          const sourceNode = nodes.find(n => n.id === tempNode);
+          const targetNode = nodes.find(n => n.id === nodeId);
+          
+          // Safety check - ensure both nodes exist
+          if (!sourceNode || !targetNode) {
+            console.error("Could not find source or target node for edge creation");
+            setTempNode(null);
+            setIsAddingEdge(false);
+            return;
           }
+          
+          const midX = (sourceNode.x + targetNode.x) / 2;
+          const midY = (sourceNode.y + targetNode.y) / 2;
+          
+          // Convert SVG coordinates to screen coordinates
+          const svgRect = svgRef.current?.getBoundingClientRect();
+          const screenX = svgRect ? svgRect.left + midX : midX;
+          const screenY = svgRect ? svgRect.top + midY : midY;
+          
+          // Open the weight input popover
+          setWeightPopover({
+            isOpen: true,
+            position: { x: screenX, y: screenY },
+            pendingEdge: { source: tempNode, target: nodeId },
+          });
+        } else {
+          // Clicked same node, cancel edge creation
+          setTempNode(null);
+          setIsAddingEdge(false);
         }
-        setTempNode(null);
-        setIsAddingEdge(false);
       }
     }
+  };
+
+  // Handle weight confirmation from popover
+  const handleWeightConfirm = (weight) => {
+    const { source, target } = weightPopover.pendingEdge || {};
+    
+    if (source !== undefined && target !== undefined) {
+      let validWeight = true;
+      let errorMsg = "";
+
+      if (algorithm === "dijkstra" && weight < 0) {
+        validWeight = false;
+        errorMsg = "Dijkstra doesn't support negative edges.";
+      }
+
+      if (validWeight) {
+        const edgeId = `${source}-${target}`;
+        if (!edges.some((e) => e.id === edgeId)) {
+          setEdges([
+            ...edges,
+            {
+              id: edgeId,
+              source,
+              target,
+              weight,
+              status: "unvisited",
+            },
+          ]);
+        }
+      } else {
+        setExplanation(errorMsg);
+      }
+    }
+
+    // Reset states
+    setWeightPopover({ isOpen: false, position: { x: 0, y: 0 }, pendingEdge: null });
+    setTempNode(null);
+    setIsAddingEdge(false);
+  };
+
+  // Handle weight cancel from popover
+  const handleWeightCancel = () => {
+    setWeightPopover({ isOpen: false, position: { x: 0, y: 0 }, pendingEdge: null });
+    setTempNode(null);
+    setIsAddingEdge(false);
   };
 
   // When an edge is clicked
@@ -931,185 +1001,121 @@ const ShortestPathVisualizer = () => {
   }, [mode]);
 
   // =========================
+  //   KEYBOARD SHORTCUTS
+  // =========================
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // ESC key cancels any active manual mode operation
+      if (e.key === "Escape" && mode === "manual") {
+        handleCancelOperation();
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mode, handleCancelOperation]);
+
+  // =========================
   //   RENDER
   // =========================
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-100">
-      {/* HEADER BAR */}
-      <header className="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-md py-3 px-2 sm:px-4">
-        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center">
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight">
-              Shortest Path Visualizer
-            </h1>
-            <div className="hidden md:flex space-x-1 text-xs">
-              <span className="px-2 py-1 bg-blue-500/30 backdrop-blur-sm rounded">
-                Educational Tool
-              </span>
-              <span className="px-2 py-1 bg-blue-500/30 backdrop-blur-sm rounded">
-                Interactive
-              </span>
-            </div>
+    <div className="flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950">
+      {/* FLOATING NAVBAR */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+        <FloatingNav>
+          {/* Logo */}
+          <div className="flex items-center gap-2 px-3">
+            <Route className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span className="text-sm font-semibold tracking-tight text-zinc-800 dark:text-zinc-200">
+              Pathfinder
+            </span>
           </div>
 
-          <div className="flex items-center flex-wrap gap-2 sm:gap-3 mt-1 sm:mt-0">
-            <button
-              onClick={toggleLegend}
-              className="text-xs bg-white/20 hover:bg-white/30 px-2 sm:px-3 py-1 rounded-full transition-colors backdrop-blur-sm flex items-center"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-3 w-3 mr-1"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                <path
-                  fillRule="evenodd"
-                  d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span className="whitespace-nowrap">{showLegend ? "Hide Legend" : "Show Legend"}</span>
-            </button>
+          <FloatingNavDivider />
 
-            <div className="hidden md:flex bg-white/10 backdrop-blur-sm rounded-full p-1">
-              <button
-                onClick={() => setAlgorithm("dijkstra")}
-                className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
-                  algorithm === "dijkstra"
-                    ? "bg-white text-blue-700"
-                    : "text-white hover:bg-white/10"
-                }`}
+          {/* Algorithm Tabs */}
+          <Tabs value={algorithm} onValueChange={handleAlgorithmChange}>
+            <TabsList className="h-9 bg-zinc-100 dark:bg-zinc-800 rounded-full">
+              <TabsTrigger 
+                value="dijkstra" 
+                className="text-xs px-3 rounded-full data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
               >
-                Dijkstra's
-              </button>
-              <button
-                onClick={() => setAlgorithm("bellmanford")}
-                className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
-                  algorithm === "bellmanford"
-                    ? "bg-white text-blue-700"
-                    : "text-white hover:bg-white/10"
-                }`}
+                Dijkstra
+              </TabsTrigger>
+              <TabsTrigger 
+                value="bellmanford" 
+                className="text-xs px-3 rounded-full data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
               >
                 Bellman-Ford
-              </button>
-            </div>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-            {/* Toggle sidebar on larger screens */}
-            <button
-              onClick={toggleSidebar}
-              className="hidden md:flex text-xs bg-white/20 hover:bg-white/30 px-2 sm:px-3 py-1 rounded-full transition-colors backdrop-blur-sm items-center"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-3 w-3 mr-1"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span className="whitespace-nowrap">{showSidebar ? "Hide Sidebar" : "Show Sidebar"}</span>
-            </button>
-          </div>
-        </div>
-      </header>
+          <FloatingNavDivider />
+
+          {/* Legend Toggle */}
+          <FloatingNavItem onClick={toggleLegend} active={showLegend} tooltip={showLegend ? "Hide Legend" : "Show Legend"}>
+            {showLegend ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </FloatingNavItem>
+
+          {/* Help/Tutorial */}
+          <FloatingNavItem onClick={() => setShowTutorial(true)} tooltip="How It Works">
+            <HelpCircle className="w-4 h-4" />
+          </FloatingNavItem>
+
+          {/* Settings */}
+          <FloatingNavItem onClick={() => setIsDrawerOpen(true)} tooltip="Settings">
+            <Settings className="w-4 h-4" />
+          </FloatingNavItem>
+        </FloatingNav>
+      </div>
 
       {/* LEGEND (Collapsible) */}
       {showLegend && (
-        <div className="bg-white shadow-sm border-b border-slate-200 p-2 overflow-x-auto">
-          {/* Example legend items */}
-          <div className="max-w-7xl mx-auto flex flex-wrap gap-3 items-center justify-center">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-lg border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 overflow-x-auto">
+          <div className="flex flex-wrap gap-3 items-center justify-center">
             <div className="flex items-center px-2">
-              <div className="w-4 h-4 bg-slate-400 mr-2 rounded" />
-              <span className="text-xs">Unvisited</span>
+              <div className="w-4 h-4 bg-zinc-400 mr-2 rounded" />
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Unvisited</span>
             </div>
             <div className="flex items-center px-2">
-              <div className="w-4 h-4 bg-orange-400 mr-2 rounded" />
-              <span className="text-xs">Candidate</span>
+              <div className="w-4 h-4 bg-amber-400 mr-2 rounded" />
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Candidate</span>
             </div>
             <div className="flex items-center px-2">
-              <div className="w-4 h-4 bg-green-500 mr-2 rounded" />
-              <span className="text-xs">Shortest Path</span>
+              <div className="w-4 h-4 bg-emerald-500 mr-2 rounded" />
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Shortest Path</span>
             </div>
             <div className="flex items-center px-2">
-              <div className="w-4 h-4 bg-red-500 mr-2 rounded" />
-              <span className="text-xs">Excluded</span>
+              <div className="w-4 h-4 bg-rose-500 mr-2 rounded" />
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Excluded</span>
             </div>
             <div className="flex items-center px-2">
               <div className="w-4 h-4 bg-purple-500 mr-2 rounded" />
-              <span className="text-xs">Negative Cycle</span>
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Negative Cycle</span>
             </div>
             <div className="flex items-center px-2">
-              <div className="w-5 h-5 bg-green-500 mr-2 rounded-full flex items-center justify-center text-white text-xs font-bold">
+              <div className="w-5 h-5 bg-emerald-500 mr-2 rounded-full flex items-center justify-center text-white text-xs font-bold">
                 A
               </div>
-              <span className="text-xs">Source Node</span>
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Source</span>
             </div>
             <div className="flex items-center px-2">
-              <div className="w-5 h-5 bg-orange-500 mr-2 rounded-full flex items-center justify-center text-white text-xs font-bold">
+              <div className="w-5 h-5 bg-rose-500 mr-2 rounded-full flex items-center justify-center text-white text-xs font-bold">
                 B
               </div>
-              <span className="text-xs">Destination Node</span>
+              <span className="text-xs text-zinc-700 dark:text-zinc-300">Target</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* MOBILE ALGORITHM SELECTOR (Only visible on xs screens) */}
-      <div className="sm:hidden bg-white shadow-sm border-b border-slate-200 p-2">
-        <div className="flex justify-center space-x-4">
-          <div className="flex items-center">
-            <input
-              type="radio"
-              id="dijkstra-mobile"
-              name="algorithm-mobile"
-              value="dijkstra"
-              checked={algorithm === "dijkstra"}
-              onChange={handleAlgorithmChange}
-              className="w-4 h-4 text-blue-600"
-            />
-            <label
-              htmlFor="dijkstra-mobile"
-              className="ml-2 font-medium text-sm"
-            >
-              Dijkstra
-            </label>
-          </div>
-          <div className="flex items-center">
-            <input
-              type="radio"
-              id="bellmanford-mobile"
-              name="algorithm-mobile"
-              value="bellmanford"
-              checked={algorithm === "bellmanford"}
-              onChange={handleAlgorithmChange}
-              className="w-4 h-4 text-blue-600"
-            />
-            <label
-              htmlFor="bellmanford-mobile"
-              className="ml-2 font-medium text-sm"
-            >
-              Bellman-Ford
-            </label>
-          </div>
-        </div>
-      </div>
-
       {/* MAIN CONTENT */}
-      <div className="flex flex-1 min-h-0 p-2 sm:p-4">
+      <div className="flex flex-1 min-h-0 pt-20 p-2 sm:p-4">
         {/* GRAPH AREA */}
-        <div
-          className={`flex-1 flex flex-col overflow-hidden ${
-            isMobile && activeTab !== "visualization" ? "hidden" : ""
-          }`}
-        >
-          <div className="bg-white shadow-md rounded-lg overflow-hidden flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="bg-white dark:bg-zinc-900 shadow-md rounded-lg overflow-hidden flex-1 flex flex-col border border-zinc-200 dark:border-zinc-800">
             {/* SVG AREA */}
             <div
               className="flex-1 relative min-h-[300px]"
@@ -1119,7 +1125,7 @@ const ShortestPathVisualizer = () => {
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
             >
-              <svg width="100%" height="100%" className="bg-slate-50">
+              <svg width="100%" height="100%" className="bg-zinc-50 dark:bg-zinc-950">
                 {/* Add this group with transform for mobile pinch-zoom/pan */}
                 <g
                   transform={`translate(${graphTransform.x}, ${graphTransform.y}) scale(${graphTransform.scale})`}
@@ -1144,188 +1150,95 @@ const ShortestPathVisualizer = () => {
                 </div>
               )}
 
-              {/* Mini Tutorial Button */}
-              <div className="absolute top-4 right-4 z-10">
-                <button
-                  onClick={() => setShowTutorial(true)}
-                  className="bg-white/90 hover:bg-white text-blue-600 flex items-center rounded-full px-3 py-1.5 shadow-md text-xs font-medium transition-colors"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4 mr-1"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  How It Works
-                </button>
-              </div>
 
-              {/* Tutorial Modal */}
-              {showTutorial && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-                    <div className="p-6">
-                      <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-bold text-blue-800">
-                          How to Use This Visualizer
-                        </h2>
-                        <button
-                          onClick={() => setShowTutorial(false)}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-6 w-6"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M6 18L18 6M6 6l12 12"
-                            />
-                          </svg>
-                        </button>
-                      </div>
+              {/* Tutorial Dialog */}
+              <Dialog open={showTutorial} onOpenChange={setShowTutorial}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800">
+                  <DialogHeader>
+                    <DialogTitle className="text-xl text-zinc-900 dark:text-zinc-100">
+                      How to Use This Visualizer
+                    </DialogTitle>
+                    <DialogDescription className="text-zinc-500 dark:text-zinc-400">
+                      Learn how to explore shortest path algorithms interactively
+                    </DialogDescription>
+                  </DialogHeader>
 
-                      <div className="space-y-4">
-                        <div className="rounded-lg bg-blue-50 p-4 border-l-4 border-blue-500">
-                          <h3 className="font-semibold text-blue-700 mb-2">
-                            Getting Started
-                          </h3>
-                          <ol className="list-decimal ml-5 space-y-2 text-gray-700">
-                            <li>
-                              Select either{" "}
-                              <span className="font-medium">Dijkstra's</span> or{" "}
-                              <span className="font-medium">Bellman-Ford</span>{" "}
-                              algorithm from the top bar
-                            </li>
-                            <li>
-                              A random graph is auto-generated when you load the
-                              page
-                            </li>
-                            <li>
-                              The green node is the{" "}
-                              <span className="text-green-600 font-medium">
-                                source node
-                              </span>{" "}
-                              where the algorithm starts
-                            </li>
-                            <li>
-                              You can set an orange{" "}
-                              <span className="text-orange-600 font-medium">
-                                destination node
-                              </span>{" "}
-                              to focus on a specific path
-                            </li>
-                          </ol>
-                        </div>
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700">
+                      <h3 className="font-semibold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-xs">1</span>
+                        Getting Started
+                      </h3>
+                      <ol className="list-decimal ml-5 space-y-2 text-zinc-600 dark:text-zinc-300 text-sm">
+                        <li>
+                          Select either{" "}
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">Dijkstra's</span> or{" "}
+                          <span className="font-medium text-zinc-900 dark:text-zinc-100">Bellman-Ford</span>{" "}
+                          algorithm from the navbar
+                        </li>
+                        <li>
+                          A random graph is auto-generated when you load the page
+                        </li>
+                        <li>
+                          The{" "}
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">green node</span>{" "}
+                          is where the algorithm starts
+                        </li>
+                        <li>
+                          You can set a{" "}
+                          <span className="text-rose-600 dark:text-rose-400 font-medium">target node</span>{" "}
+                          to focus on a specific path
+                        </li>
+                      </ol>
+                    </div>
 
-                        <div className="rounded-lg bg-purple-50 p-4 border-l-4 border-purple-500">
-                          <h3 className="font-semibold text-purple-700 mb-2">
-                            Understanding the Controls
-                          </h3>
-                          <ul className="space-y-2 text-gray-700">
-                            <li>
-                              <strong>Start:</strong> Run the algorithm
-                              automatically
-                            </li>
-                            <li>
-                              <strong>Step:</strong> Execute a single algorithm
-                              operation
-                            </li>
-                            <li>
-                              <strong>Skip to Event:</strong> Jump to the next
-                              significant event (path update, node visit)
-                            </li>
-                            <li>
-                              <strong>View Paths/Explore Steps:</strong> Toggle
-                              between exploration and viewing modes
-                            </li>
-                            <li>
-                              <strong>Reset:</strong> Clear all algorithm
-                              progress
-                            </li>
-                            <li>
-                              <strong>Show All Paths:</strong> Display the final
-                              shortest paths
-                            </li>
-                          </ul>
-                        </div>
+                    <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700">
+                      <h3 className="font-semibold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-xs">2</span>
+                        Understanding the Controls
+                      </h3>
+                      <ul className="space-y-2 text-zinc-600 dark:text-zinc-300 text-sm">
+                        <li><strong className="text-emerald-600 dark:text-emerald-400">Start:</strong> Run the algorithm automatically</li>
+                        <li><strong className="text-indigo-600 dark:text-indigo-400">Step:</strong> Execute a single algorithm operation</li>
+                        <li><strong className="text-zinc-600 dark:text-zinc-400">Reset:</strong> Clear all algorithm progress</li>
+                      </ul>
+                    </div>
 
-                        <div className="rounded-lg bg-amber-50 p-4 border-l-4 border-amber-500">
-                          <h3 className="font-semibold text-amber-700 mb-2">
-                            Mobile Features
-                          </h3>
-                          <ul className="space-y-2 text-gray-700">
-                            <li>
-                              <strong>Pinch to Zoom:</strong> Use two fingers to
-                              zoom in/out on the graph
-                            </li>
-                            <li>
-                              <strong>Pan:</strong> Drag with one finger to move
-                              around the graph
-                            </li>
-                            <li>
-                              <strong>Tab Navigation:</strong> Switch between
-                              Graph, Settings, and Compare views
-                            </li>
-                            <li>
-                              <strong>Touch Friendliness:</strong> Larger
-                              buttons and controls for easier mobile interaction
-                            </li>
-                            <li>
-                              <strong>Double Tap:</strong> Reset the zoom and
-                              pan on the graph
-                            </li>
-                          </ul>
-                        </div>
+                    <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700">
+                      <h3 className="font-semibold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-xs">3</span>
+                        Mobile Features
+                      </h3>
+                      <ul className="space-y-2 text-zinc-600 dark:text-zinc-300 text-sm">
+                        <li><strong className="text-zinc-900 dark:text-zinc-100">Pinch to Zoom:</strong> Use two fingers to zoom in/out</li>
+                        <li><strong className="text-zinc-900 dark:text-zinc-100">Pan:</strong> Drag with one finger to move around</li>
+                        <li><strong className="text-zinc-900 dark:text-zinc-100">Settings:</strong> Access from the navbar to configure graph</li>
+                      </ul>
+                    </div>
 
-                        <div className="rounded-lg bg-green-50 p-4 border-l-4 border-green-500">
-                          <h3 className="font-semibold text-green-700 mb-2">
-                            Educational Features
-                          </h3>
-                          <ul className="space-y-2 text-gray-700">
-                            <li>
-                              Watch how the algorithm{" "}
-                              <strong>builds paths incrementally</strong>
-                            </li>
-                            <li>
-                              Observe the <strong>data structures</strong>{" "}
-                              (distances, priority queue)
-                            </li>
-                            <li>
-                              Follow the <strong>highlighted pseudocode</strong>{" "}
-                              to understand each step
-                            </li>
-                            <li>
-                              <strong>Compare algorithms</strong> to understand
-                              their strengths and limitations
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 flex justify-end">
-                        <button
-                          onClick={() => setShowTutorial(false)}
-                          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-                        >
-                          Got it!
-                        </button>
-                      </div>
+                    <div className="rounded-lg bg-zinc-50 dark:bg-zinc-800/50 p-4 border border-zinc-200 dark:border-zinc-700">
+                      <h3 className="font-semibold text-indigo-600 dark:text-indigo-400 mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-xs">4</span>
+                        Educational Features
+                      </h3>
+                      <ul className="space-y-2 text-zinc-600 dark:text-zinc-300 text-sm">
+                        <li>Watch how the algorithm <strong className="text-zinc-900 dark:text-zinc-100">builds paths incrementally</strong></li>
+                        <li>Observe the <strong className="text-zinc-900 dark:text-zinc-100">data structures</strong> (distances, priority queue)</li>
+                        <li><strong className="text-zinc-900 dark:text-zinc-100">Compare algorithms</strong> to understand their strengths</li>
+                      </ul>
                     </div>
                   </div>
-                </div>
-              )}
+
+                  <DialogFooter>
+                    <button
+                      onClick={() => setShowTutorial(false)}
+                      className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    >
+                      Got it!
+                    </button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               {/* Algorithm Visualization Overlay */}
               <AlgorithmVisualizer
@@ -1341,311 +1254,131 @@ const ShortestPathVisualizer = () => {
                 currentAlgorithmStep={currentAlgorithmStep}
               />
 
-              {/* Visualization Mode Indicator */}
+              {/* Visualization Mode Toggle Button */}
               <div className="absolute bottom-3 right-3 z-10">
-                <div
-                  className={`px-3 py-1 rounded-full text-xs font-medium shadow-sm ${
+                <button
+                  onClick={toggleVisualizationMode}
+                  className={`group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium shadow-sm backdrop-blur-sm transition-all hover:shadow-md cursor-pointer ${
                     visualizationMode === "explore"
-                      ? "bg-blue-100 text-blue-800 border border-blue-300"
-                      : "bg-purple-100 text-purple-800 border border-purple-300"
+                      ? "bg-indigo-100/90 text-indigo-700 border border-indigo-200 hover:bg-indigo-200/90"
+                      : "bg-amber-100/90 text-amber-700 border border-amber-200 hover:bg-amber-200/90"
                   }`}
+                  title={visualizationMode === "explore" 
+                    ? "Click to switch to View Mode (see final answer)" 
+                    : "Click to switch to Explore Mode (step through algorithm)"}
                 >
-                  {visualizationMode === "explore"
-                    ? "Explore Mode"
-                    : "View Mode"}
+                  {visualizationMode === "explore" ? (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Explore Mode</span>
+                      <span className="text-[10px] opacity-60 group-hover:opacity-100">→ View</span>
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>View Mode</span>
+                      <span className="text-[10px] opacity-60 group-hover:opacity-100">→ Explore</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* MANUAL MODE TOOLBAR - Desktop only, when in manual mode */}
+            {mode === "manual" && !isMobile && (
+              <ManualModeToolbar
+                isAddingNode={isAddingNode}
+                isAddingEdge={isAddingEdge}
+                isDeletingNode={isDeletingNode}
+                isDeletingEdge={isDeletingEdge}
+                isSelectingSource={isSelectingSource}
+                isSelectingDest={isSelectingDest}
+                tempNode={tempNode}
+                onAddNodeMode={handleAddNodeMode}
+                onAddEdgeMode={handleAddEdgeMode}
+                onDeleteNodeMode={handleDeleteNodeMode}
+                onDeleteEdgeMode={handleDeleteEdgeMode}
+                onSelectSourceMode={handleSelectSourceMode}
+                onSelectDestMode={handleSelectDestMode}
+                onClearGraph={clearGraph}
+                onCancelOperation={handleCancelOperation}
+                nodes={nodes}
+                selectedSourceNode={selectedSourceNode}
+                selectedDestNode={selectedDestNode}
+              />
+            )}
+
+            {/* FLOATING CONTROL BAR - Desktop only, hidden in manual mode */}
+            <div className={`${isMobile || mode === "manual" ? "hidden" : "fixed bottom-5 left-1/2 -translate-x-1/2 z-40"}`}>
+              <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-full px-6 py-4 shadow-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-4">
+                {/* Step Progress Indicator - Compact */}
+                {steps.length > 0 && (
+                  <div className="flex items-center gap-2 pr-4 border-r border-zinc-200 dark:border-zinc-700">
+                    <span className="text-sm text-zinc-500 dark:text-zinc-400 font-medium tabular-nums whitespace-nowrap">
+                      {currentStep}/{steps.length}
+                    </span>
+                    <div className="h-2 w-20 bg-zinc-200 dark:bg-zinc-700 rounded-full">
+                      <div
+                        className="h-2 bg-indigo-500 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${(currentStep / steps.length) * 100}%`,
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Main Control Buttons - Floating pill style */}
+                <div className="flex items-center gap-3">
+                  {/* Start/Resume/Pause Button - Primary action */}
+                  <button
+                    onClick={handlePlayPause}
+                    className="h-11 px-6 rounded-full flex items-center justify-center font-semibold text-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md hover:shadow-lg active:scale-95"
+                  >
+                    {isRunning ? (
+                      isPaused ? (
+                        <>
+                          <Play className="w-4 h-4 mr-2" />
+                          Resume
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="w-4 h-4 mr-2" />
+                          Pause
+                        </>
+                      )
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 mr-2" />
+                        Start
+                      </>
+                    )}
+                  </button>
+
+                  {/* Step Button - Outline variant */}
+                  <button
+                    onClick={handleStep}
+                    className="h-11 px-6 rounded-full flex items-center justify-center font-semibold text-sm bg-white dark:bg-zinc-800 border-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all active:scale-95"
+                  >
+                    <SkipForward className="w-4 h-4 mr-2" />
+                    Step
+                  </button>
+
+                  {/* Reset Button - Ghost variant */}
+                  <button
+                    onClick={resetGraph}
+                    className="h-11 px-6 rounded-full flex items-center justify-center font-semibold text-sm bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all active:scale-95"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Reset
+                  </button>
                 </div>
               </div>
             </div>
 
-            {/* CONTROL PANEL - Desktop version hidden on mobile */}
+            {/* DESKTOP INFO PANEL - Below graph, above floating bar */}
             <div className={`${isMobile ? "hidden" : "block"}`}>
-              <div className="bg-white border-t border-slate-200 p-3">
-                <div className="flex justify-center flex-wrap gap-2 mb-3">
-                  {/* Step Progress Indicator */}
-                  {steps.length > 0 && (
-                    <div className="w-full max-w-md flex items-center justify-center gap-2 mb-2">
-                      <span className="text-xs text-slate-700">
-                        {currentStep} of {steps.length}
-                      </span>
-                      <div className="h-2 bg-slate-200 rounded-full flex-1">
-                        <div
-                          className="h-2 bg-blue-500 rounded-full"
-                          style={{
-                            width: `${(currentStep / steps.length) * 100}%`,
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-center flex-wrap gap-2">
-                    {/* Back Step Button with tooltip */}
-                    <div className="relative group">
-                      <button
-                        onClick={handleBackStep}
-                        disabled={currentStep === 0 || isRunning}
-                        className="py-2 px-4 rounded-md flex items-center justify-center bg-slate-500 hover:bg-slate-600 text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Go back one step in the algorithm execution"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4 mr-2"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.707 14.707a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l2.293 2.293a1 1 0 010 1.414z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        Back
-                      </button>
-                      {visualizationMode === "view" && (
-                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-9 w-40 bg-black text--white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                          Switch to Explore mode to use
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Start/Resume/Pause with tooltip */}
-                    <div className="relative group">
-                      <button
-                        onClick={handlePlayPause}
-                        disabled={visualizationMode === "view"}
-                        className={`py-2 px-4 rounded-md flex items-center justify-center ${
-                          isRunning && !isPaused
-                            ? "bg-amber-500 hover:bg-amber-600"
-                            : "bg-green-500 hover:bg-green-600"
-                        } text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed`}
-                        title={
-                          isRunning
-                            ? isPaused
-                              ? "Resume animation"
-                              : "Pause animation"
-                            : "Start animation"
-                        }
-                      >
-                        {isRunning ? (
-                          isPaused ? (
-                            <>
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4 mr-2"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                              Resume
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4 mr-2"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                              Pause
-                            </>
-                          )
-                        ) : (
-                          <>
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              className="h-4 w-4 mr-2"
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                            >
-                              <path
-                                fillRule="evenodd"
-                                d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                                clipRule="evenodd"
-                              />
-                            </svg>
-                            Start
-                          </>
-                        )}
-                      </button>
-                      {visualizationMode === "view" && (
-                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-9 w-40 bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                          Switch to Explore mode to use
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Step Button with tooltip */}
-                    <div className="relative group">
-                      <button
-                        onClick={handleStep}
-                        disabled={visualizationMode === "view"}
-                        className="py-2 px-4 rounded-md flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Execute one single step of the algorithm"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4 mr-2"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        Step
-                      </button>
-                      {visualizationMode === "view" && (
-                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-9 w-40 bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                          Switch to Explore mode to use
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Forward Step Button with tooltip */}
-                    <div className="relative group">
-                      <button
-                        onClick={handleForwardStep}
-                        disabled={
-                          currentStep >= steps.length ||
-                          isRunning ||
-                          visualizationMode === "view"
-                        }
-                        className="py-2 px-4 rounded-md flex items-center justify-center bg-indigo-500 hover:bg-indigo-600 text-white transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Skip to the next significant algorithm event (path update, node visit)"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4 mr-2"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        Skip to Event
-                      </button>
-                      {visualizationMode === "view" && (
-                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-9 w-40 bg-black text-white text-xs rounded py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                          Switch to Explore mode to use
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Mode Toggle Button */}
-                    <button
-                      onClick={toggleVisualizationMode}
-                      className={`py-2 px-4 rounded-md flex items-center justify-center ${
-                        visualizationMode === "explore"
-                          ? "bg-purple-500 hover:bg-purple-600"
-                          : "bg-blue-500 hover:bg-blue-600"
-                      } text-white transition-colors shadow-sm`}
-                      title={
-                        visualizationMode === "explore"
-                          ? "Switch to View mode"
-                          : "Switch to Explore mode"
-                      }
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 mr-2"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {visualizationMode === "explore"
-                        ? "View Paths"
-                        : "Explore Steps"}
-                    </button>
-
-                    {/* Reset Button */}
-                    <button
-                      onClick={resetGraph}
-                      className="py-2 px-4 rounded-md flex items-center justify-center bg-slate-500 hover:bg-slate-600 text-white transition-colors shadow-sm"
-                      title="Reset the graph and algorithm state"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 mr-2"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      Reset
-                    </button>
-
-                    {/* Show Button */}
-                    <button
-                      onClick={handleShowAnswer}
-                      className="py-2 px-4 rounded-md flex items-center justify-center bg-purple-500 hover:bg-purple-600 text-white transition-colors shadow-sm"
-                      title="Show the final shortest paths"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 mr-2"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                        <path
-                          fillRule="evenodd"
-                          d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      Show All Paths
-                    </button>
-                  </div>
-                </div>
-
-                {/* SPEED CONTROL */}
-                <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
-                  <span className="text-xs text-slate-600">Speed:</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    value={(2200 - animationSpeed) / 400}
-                    onChange={handleSpeedChange}
-                    className="w-24 h-2 accent-blue-600"
-                    disabled={visualizationMode === "view"}
-                    title={
-                      visualizationMode === "view"
-                        ? "Animation speed (disabled in View mode)"
-                        : "Animation speed"
-                    }
-                  />
-                  <div className="flex text-xs text-slate-600">
-                    <span>Slow</span>
-                    <span className="mx-1">|</span>
-                    <span>Fast</span>
-                  </div>
-                </div>
+              <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 px-4 pt-4 pb-24">
 
                 {/* MOBILE ALGORITHM STATE DISPLAY */}
                 <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -1822,11 +1555,11 @@ const ShortestPathVisualizer = () => {
                 />
 
                 {/* Explanation area */}
-                <div className="bg-blue-50 rounded-lg p-2 border border-blue-100 min-h-16 max-h-32 overflow-y-auto">
-                  <h3 className="font-semibold text-blue-800 text-sm">
-                    Explanation:
+                <div className="mt-4 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg p-3 border border-indigo-100 dark:border-indigo-900 min-h-16 max-h-32 overflow-y-auto">
+                  <h3 className="font-semibold text-indigo-700 dark:text-indigo-400 text-sm mb-1">
+                    Current Step:
                   </h3>
-                  <div className="text-sm text-slate-700">{explanation}</div>
+                  <div className="text-sm text-zinc-700 dark:text-zinc-300">{explanation}</div>
                 </div>
               </div>
             </div>
@@ -1834,75 +1567,40 @@ const ShortestPathVisualizer = () => {
             {/* MOBILE CONTROLS - Only visible on mobile */}
             {isMobile && (
               <MobileControls 
-                handleBackStep={handleBackStep}
                 currentStep={currentStep}
                 isRunning={isRunning}
-                visualizationMode={visualizationMode}
                 handlePlayPause={handlePlayPause}
                 isPaused={isPaused}
                 handleStep={handleStep}
-                handleShowAnswer={handleShowAnswer}
-                toggleVisualizationMode={toggleVisualizationMode}
                 resetGraph={resetGraph}
                 resetGraphTransform={resetGraphTransform}
-                animationSpeed={animationSpeed}
-                handleSpeedChange={handleSpeedChange}
                 explanation={explanation}
+                steps={steps}
               />
             )}
           </div>
         </div>
 
-        {/* MOBILE TABS - show settings or compare tab content */}
-        {isMobile && activeTab === "settings" && (
-          <div className="fixed inset-0 pt-14 pb-16 px-2 z-10 bg-slate-100 overflow-y-auto">
-            <MobileSettings 
-              algorithm={algorithm}
-              handleAlgorithmChange={handleAlgorithmChange}
-              handleModeChange={handleModeChange}
-              mode={mode}
-              graphParams={graphParams}
-              handleParamChange={handleParamChange}
-              handleGenerateRandomGraph={handleGenerateRandomGraph}
-              clearGraph={clearGraph}
-              handleAddNodeMode={handleAddNodeMode}
-              isAddingNode={isAddingNode}
-              handleAddEdgeMode={handleAddEdgeMode}
-              isAddingEdge={isAddingEdge}
-              handleDeleteNodeMode={handleDeleteNodeMode}
-              isDeletingNode={isDeletingNode}
-              handleDeleteEdgeMode={handleDeleteEdgeMode}
-              isDeletingEdge={isDeletingEdge}
-              handleSelectSourceMode={handleSelectSourceMode}
-              isSelectingSource={isSelectingSource}
-              handleSelectDestMode={handleSelectDestMode}
-              isSelectingDest={isSelectingDest}
-            />
-          </div>
-        )}
+      </div>
 
-        {isMobile && activeTab === "compare" && (
-          <div className="fixed inset-0 pt-14 pb-16 px-2 z-10 bg-slate-100 overflow-y-auto">
-            <MobileCompare />
-          </div>
-        )}
-
-        {/* SIDEBAR - Only visible on desktop when showSidebar is true */}
-        {showSidebar && !isMobile && (
-          <div className="w-full md:w-72 xl:w-80 ml-3 overflow-auto bg-white shadow-md rounded-lg p-4">
-            <h2 className="text-lg font-semibold mb-2 text-blue-800">
-              Graph Settings
-            </h2>
-
+      {/* SETTINGS DRAWER */}
+      <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
+        <DrawerContent className="max-h-[85vh]">
+          <DrawerHeader>
+            <DrawerTitle className="text-indigo-700 dark:text-indigo-400">Graph Settings</DrawerTitle>
+            <DrawerDescription>Configure your graph parameters</DrawerDescription>
+          </DrawerHeader>
+          
+          <div className="px-4 pb-4 overflow-y-auto">
             {/* Mode */}
-            <div className="mb-3">
-              <label className="block text-sm font-medium text-slate-700">
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
                 Mode
               </label>
               <select
                 value={mode}
                 onChange={handleModeChange}
-                className="w-full rounded-md border border-slate-300 p-2 bg-white mt-1"
+                className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 p-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
               >
                 <option value="auto">Auto-Generate</option>
                 <option value="manual">Manual Design</option>
@@ -1911,47 +1609,47 @@ const ShortestPathVisualizer = () => {
 
             {/* Manual Mode Toolbar */}
             {mode === "manual" && (
-              <div className="bg-amber-50 p-3 rounded border border-amber-200 mb-3 text-sm">
-                <p className="font-medium text-amber-800 mb-2">
+              <div className="bg-amber-50 dark:bg-amber-950/50 p-3 rounded-lg border border-amber-200 dark:border-amber-800 mb-4 text-sm">
+                <p className="font-medium text-amber-800 dark:text-amber-400 mb-2">
                   Manual Mode Toolbar:
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={handleAddNodeMode}
-                    className={`px-2 py-1 rounded text-sm ${
+                    onClick={() => { handleAddNodeMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm ${
                       isAddingNode
-                        ? "bg-green-500 text-white"
-                        : "bg-slate-200 hover:bg-slate-300"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600"
                     }`}
                   >
                     {isAddingNode ? "Click Graph..." : "Add Node"}
                   </button>
                   <button
-                    onClick={handleAddEdgeMode}
-                    className={`px-2 py-1 rounded text-sm ${
+                    onClick={() => { handleAddEdgeMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm ${
                       isAddingEdge
-                        ? "bg-green-500 text-white"
-                        : "bg-slate-200 hover:bg-slate-300"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600"
                     }`}
                   >
                     {isAddingEdge ? "Select Nodes..." : "Add Edge"}
                   </button>
                   <button
-                    onClick={handleDeleteNodeMode}
-                    className={`px-2 py-1 rounded text-sm ${
+                    onClick={() => { handleDeleteNodeMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm ${
                       isDeletingNode
-                        ? "bg-red-500 text-white"
-                        : "bg-slate-200 hover:bg-slate-300"
+                        ? "bg-rose-500 text-white"
+                        : "bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600"
                     }`}
                   >
                     {isDeletingNode ? "Click Node..." : "Delete Node"}
                   </button>
                   <button
-                    onClick={handleDeleteEdgeMode}
-                    className={`px-2 py-1 rounded text-sm ${
+                    onClick={() => { handleDeleteEdgeMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm ${
                       isDeletingEdge
-                        ? "bg-red-500 text-white"
-                        : "bg-slate-200 hover:bg-slate-300"
+                        ? "bg-rose-500 text-white"
+                        : "bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600"
                     }`}
                   >
                     {isDeletingEdge ? "Click Edge..." : "Delete Edge"}
@@ -1960,32 +1658,31 @@ const ShortestPathVisualizer = () => {
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    onClick={handleSelectSourceMode}
-                    className={`px-2 py-1 rounded text-sm ${
+                    onClick={() => { handleSelectSourceMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm ${
                       isSelectingSource
-                        ? "bg-green-500 text-white"
-                        : "bg-green-200 hover:bg-green-300"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-emerald-200 hover:bg-emerald-300 dark:bg-emerald-900 dark:hover:bg-emerald-800"
                     }`}
                   >
                     {isSelectingSource ? "Click Node..." : "Set Source"}
                   </button>
                   <button
-                    onClick={handleSelectDestMode}
-                    className={`px-2 py-1 rounded text-sm ${
+                    onClick={() => { handleSelectDestMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm ${
                       isSelectingDest
-                        ? "bg-orange-500 text-white"
-                        : "bg-orange-200 hover:bg-orange-300"
+                        ? "bg-rose-500 text-white"
+                        : "bg-rose-200 hover:bg-rose-300 dark:bg-rose-900 dark:hover:bg-rose-800"
                     }`}
                   >
-                    {isSelectingDest ? "Click Node..." : "Set Destination"}
+                    {isSelectingDest ? "Click Node..." : "Set Target"}
                   </button>
                 </div>
 
-                {/* Clear Graph */}
                 <div className="mt-3">
                   <button
-                    onClick={clearGraph}
-                    className="w-full px-2 py-1 rounded text-sm bg-blue-500 text-white hover:bg-blue-600"
+                    onClick={() => { clearGraph(); setIsDrawerOpen(false); }}
+                    className="w-full px-3 py-2 rounded text-sm bg-indigo-600 text-white hover:bg-indigo-700"
                   >
                     Clear Graph
                   </button>
@@ -1996,52 +1693,69 @@ const ShortestPathVisualizer = () => {
             {/* Auto Mode Controls */}
             {mode === "auto" && (
               <>
-                {/* Number of Nodes - Enhanced slider */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-sm font-medium text-gray-700">
+                {/* Number of Nodes */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Number of Nodes
                     </label>
-                    <span className="text-blue-600 font-medium">
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">
                       {graphParams.nodeCount}
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    name="nodeCount"
-                    min="3"
-                    max="10"
-                    value={graphParams.nodeCount}
-                    onChange={handleParamChange}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  <Slider
+                    value={[graphParams.nodeCount]}
+                    onValueChange={(value) => setGraphParams({ ...graphParams, nodeCount: value[0] })}
+                    min={3}
+                    max={10}
+                    step={1}
+                    className="w-full"
                   />
                 </div>
 
-                {/* Edge Density - Enhanced slider */}
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-sm font-medium text-gray-700">
+                {/* Edge Density */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Edge Density
                     </label>
-                    <span className="text-blue-600 font-medium">
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">
                       {graphParams.density.toFixed(1)}
                     </span>
                   </div>
-                  <input
-                    type="range"
-                    name="density"
-                    min="0.2"
-                    max="0.8"
-                    step="0.1"
-                    value={graphParams.density}
-                    onChange={handleParamChange}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  <Slider
+                    value={[graphParams.density * 10]}
+                    onValueChange={(value) => setGraphParams({ ...graphParams, density: value[0] / 10 })}
+                    min={2}
+                    max={8}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Animation Speed */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Animation Speed
+                    </label>
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                      {animationSpeed <= 600 ? "Fast" : animationSpeed <= 1200 ? "Medium" : "Slow"}
+                    </span>
+                  </div>
+                  <Slider
+                    value={[(2200 - animationSpeed) / 400]}
+                    onValueChange={(value) => setAnimationSpeed(2200 - value[0] * 400)}
+                    min={1}
+                    max={5}
+                    step={1}
+                    className="w-full"
                   />
                 </div>
 
                 {/* Weight Range */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
                     Weight Range
                   </label>
                   <div className="flex items-center space-x-2">
@@ -2052,9 +1766,9 @@ const ShortestPathVisualizer = () => {
                       max="98"
                       value={graphParams.minWeight}
                       onChange={handleParamChange}
-                      className="w-full border border-gray-300 rounded-md py-1.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full border border-zinc-300 dark:border-zinc-700 rounded-md py-2 px-3 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
-                    <span className="text-gray-500">to</span>
+                    <span className="text-zinc-500">to</span>
                     <input
                       type="number"
                       name="maxWeight"
@@ -2062,117 +1776,70 @@ const ShortestPathVisualizer = () => {
                       max="99"
                       value={graphParams.maxWeight}
                       onChange={handleParamChange}
-                      className="w-full border border-gray-300 rounded-md py-1.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full border border-zinc-300 dark:border-zinc-700 rounded-md py-2 px-3 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                 </div>
 
                 {/* Negative Edges (only for Bellman-Ford) */}
                 {algorithm === "bellmanford" && (
-                  <div className="mb-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="allowNegativeEdges"
-                        name="allowNegativeEdges"
+                  <div className="mb-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                          Allow Negative Edges
+                        </label>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          {graphParams.allowNegativeEdges
+                            ? "May generate negative cycles"
+                            : "All edge weights will be positive"}
+                        </p>
+                      </div>
+                      <Switch
                         checked={graphParams.allowNegativeEdges}
-                        onChange={handleParamChange}
-                        className="w-4 h-4 text-blue-600 rounded"
+                        onCheckedChange={(checked) => setGraphParams({ ...graphParams, allowNegativeEdges: checked })}
                       />
-                      <label
-                        htmlFor="allowNegativeEdges"
-                        className="ml-2 block text-sm text-slate-700"
-                      >
-                        Allow Negative Edges
-                      </label>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500 ml-6">
-                      {graphParams.allowNegativeEdges
-                        ? "May generate negative cycles (Bellman-Ford can detect them)."
-                        : "All edge weights will be positive."}
                     </div>
                   </div>
                 )}
 
-                {/* Generate New Graph - Enhanced button */}
+                {/* Generate New Graph */}
                 <button
-                  onClick={handleGenerateRandomGraph}
-                  className="mt-4 w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-2 px-4 rounded-md transition-colors shadow-sm flex items-center justify-center"
+                  onClick={() => { handleGenerateRandomGraph(); setIsDrawerOpen(false); }}
+                  className="w-full bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white py-3 px-4 rounded-lg transition-colors shadow-sm flex items-center justify-center font-medium"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 mr-2"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                  <RefreshCw className="w-5 h-5 mr-2" />
                   Generate New Graph
                 </button>
 
-                {/* Algorithm comparison - new educational component */}
-                <div className="mt-6 pt-4 border-t border-gray-100">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-semibold text-gray-700">
-                      Compare Algorithms
-                    </h3>
-                    <span className="text-xs text-gray-500">
-                      Key differences
-                    </span>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-xs">
+                {/* Algorithm comparison */}
+                <div className="mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                  <h3 className="font-semibold text-zinc-700 dark:text-zinc-300 mb-3">
+                    Compare Algorithms
+                  </h3>
+                  <div className="bg-zinc-50 dark:bg-zinc-800 rounded-lg p-3 text-xs">
                     <div className="flex">
-                      <div className="w-1/2 pr-2 border-r border-gray-200">
-                        <h4 className="font-bold text-blue-700 mb-1">
-                          Dijkstra's
-                        </h4>
-                        <ul className="space-y-1 text-gray-600">
-                          <li className="flex items-start">
-                            <span className="text-green-500 mr-1">✓</span>{" "}
-                            Faster for sparse graphs
-                          </li>
-                          <li className="flex items-start">
-                            <span className="text-green-500 mr-1">✓</span>{" "}
-                            Priority queue optimized
-                          </li>
-                          <li className="flex items-start">
-                            <span className="text-red-500 mr-1">✗</span> No
-                            negative weights
-                          </li>
+                      <div className="w-1/2 pr-2 border-r border-zinc-200 dark:border-zinc-700">
+                        <h4 className="font-bold text-indigo-700 dark:text-indigo-400 mb-1">Dijkstra's</h4>
+                        <ul className="space-y-1 text-zinc-600 dark:text-zinc-400">
+                          <li className="flex items-start"><span className="text-emerald-500 mr-1">✓</span> Faster for sparse graphs</li>
+                          <li className="flex items-start"><span className="text-emerald-500 mr-1">✓</span> Priority queue optimized</li>
+                          <li className="flex items-start"><span className="text-rose-500 mr-1">✗</span> No negative weights</li>
                         </ul>
                       </div>
                       <div className="w-1/2 pl-2">
-                        <h4 className="font-bold text-blue-700 mb-1">
-                          Bellman-Ford
-                        </h4>
-                        <ul className="space-y-1 text-gray-600">
-                          <li className="flex items-start">
-                            <span className="text-green-500 mr-1">✓</span>{" "}
-                            Handles negative weights
-                          </li>
-                          <li className="flex items-start">
-                            <span className="text-green-500 mr-1">✓</span>{" "}
-                            Detects negative cycles
-                          </li>
-                          <li className="flex items-start">
-                            <span className="text-red-500 mr-1">✗</span> Slower
-                            (checks all edges)
-                          </li>
+                        <h4 className="font-bold text-indigo-700 dark:text-indigo-400 mb-1">Bellman-Ford</h4>
+                        <ul className="space-y-1 text-zinc-600 dark:text-zinc-400">
+                          <li className="flex items-start"><span className="text-emerald-500 mr-1">✓</span> Handles negative weights</li>
+                          <li className="flex items-start"><span className="text-emerald-500 mr-1">✓</span> Detects negative cycles</li>
+                          <li className="flex items-start"><span className="text-rose-500 mr-1">✗</span> Slower (checks all edges)</li>
                         </ul>
                       </div>
                     </div>
-                    <div className="mt-2 text-gray-500 border-t border-gray-200 pt-2">
+                    <div className="mt-2 text-zinc-500 border-t border-zinc-200 dark:border-zinc-700 pt-2">
                       <div className="flex justify-between">
                         <span>Time Complexity:</span>
-                        <span>
-                          {algorithm === "dijkstra"
-                            ? "O((V+E)log V)"
-                            : "O(V⋅E)"}
-                        </span>
+                        <span className="font-mono">{algorithm === "dijkstra" ? "O((V+E)log V)" : "O(V⋅E)"}</span>
                       </div>
                     </div>
                   </div>
@@ -2180,20 +1847,19 @@ const ShortestPathVisualizer = () => {
               </>
             )}
           </div>
-        )}
-      </div>
+        </DrawerContent>
+      </Drawer>
 
-      {/* MOBILE TAB NAVIGATION BAR */}
-      {isMobile && (
-        <MobileTabBar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          toggleSidebar={toggleSidebar}
-        />
-      )}
+      {/* Weight Input Popover for Edge Creation */}
+      <WeightInputPopover
+        isOpen={weightPopover.isOpen}
+        position={weightPopover.position}
+        initialWeight={10}
+        allowNegative={algorithm === "bellmanford" && graphParams.allowNegativeEdges}
+        onConfirm={handleWeightConfirm}
+        onCancel={handleWeightCancel}
+      />
 
-      {/* SPACING DIV FOR MOBILE - to ensure content isn't hidden behind tab bar */}
-      {isMobile && <div className="h-16"></div>}
     </div>
   );
 };

@@ -3,22 +3,32 @@
  * ensures connectivity from a chosen source node, etc.
  * Optimized for visual clarity and educational purpose.
  */
+import {
+  LAYOUT,
+  NODE_VARIANCE,
+  EDGE_PREFERENCES,
+  DENSITY,
+  WEIGHTS,
+  NEGATIVE_EDGES,
+  NEGATIVE_CYCLE,
+} from '../../constants/graphConfig';
+
 export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   // Adjust weight ranges based on algorithm type
   let { nodeCount, density, minWeight, maxWeight, allowNegativeEdges } = graphParams;
   
   // Algorithm-specific adjustments
   if (algorithm === 'dijkstra') {
-    // Smaller weight range for Dijkstra (1-15)
-    minWeight = 1;
-    maxWeight = 15;
+    // Smaller weight range for Dijkstra
+    minWeight = WEIGHTS.DIJKSTRA.MIN;
+    maxWeight = WEIGHTS.DIJKSTRA.MAX;
     
     // Slightly increase edge density for Dijkstra to show more path options
-    density = Math.min(density * 1.15, 0.5);
+    density = Math.min(density * DENSITY.DIJKSTRA_DENSITY_BOOST, DENSITY.DIJKSTRA_DENSITY_CAP);
   } else if (algorithm === 'bellmanford') {
     // Larger weight values for Bellman-Ford
-    minWeight = Math.max(minWeight, 2);
-    maxWeight = Math.max(maxWeight, 25);
+    minWeight = Math.max(minWeight, WEIGHTS.BELLMAN_FORD.MIN_FLOOR);
+    maxWeight = Math.max(maxWeight, WEIGHTS.BELLMAN_FORD.MAX_FLOOR);
   }
 
   const svgWidth = svgRef.current.clientWidth;
@@ -27,7 +37,7 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   // Check if we're on mobile based on user agent and viewport width
   const isMobile = 
     typeof window !== "undefined" &&
-    (window.innerWidth < 768 || 
+    (window.innerWidth < LAYOUT.MOBILE_BREAKPOINT || 
      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
        navigator.userAgent
      ));
@@ -43,10 +53,19 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   
   // Calculate optimal radius based on screen size and node count
   // More nodes = slightly larger radius to avoid crowding
-  const baseRadius = Math.min(svgWidth, svgHeight) / (isMobile ? 2.8 : 3.2);
-  const scaleFactor = 1 + (nodeCount > 8 ? (nodeCount - 8) * 0.03 : 0);
+  const radiusDivisor = isMobile 
+    ? LAYOUT.BASE_RADIUS_DIVISOR.MOBILE 
+    : LAYOUT.BASE_RADIUS_DIVISOR.DESKTOP;
+  const baseRadius = Math.min(svgWidth, svgHeight) / radiusDivisor;
+  
+  const scaleFactor = 1 + (nodeCount > LAYOUT.SCALE.NODE_THRESHOLD 
+    ? (nodeCount - LAYOUT.SCALE.NODE_THRESHOLD) * LAYOUT.SCALE.INCREMENT_PER_NODE 
+    : 0);
   let radius = baseRadius * scaleFactor;
-  radius = Math.max(radius, isMobile ? 120 : 150); // Enforce minimum radius
+  
+  // Enforce minimum radius
+  const minRadius = isMobile ? LAYOUT.MIN_RADIUS.MOBILE : LAYOUT.MIN_RADIUS.DESKTOP;
+  radius = Math.max(radius, minRadius);
   
   const centerX = svgWidth / 2;
   const centerY = svgHeight / 2;
@@ -54,10 +73,16 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   // Reduce randomness as node count increases to avoid overlaps
   const getNodePlacementVariance = (count) => {
     // Less variance with more nodes, scales down progressively
-    if (count <= 5) return isMobile ? 15 : 20;       // Few nodes: more freedom
-    if (count <= 8) return isMobile ? 10 : 15;       // Medium: moderate freedom
-    if (count <= 12) return isMobile ? 7 : 10;       // Many: limited freedom
-    return isMobile ? 4 : 6;                         // Lots: minimal freedom
+    if (count <= NODE_VARIANCE.FEW_NODES_THRESHOLD) {
+      return isMobile ? NODE_VARIANCE.FEW_NODES.MOBILE : NODE_VARIANCE.FEW_NODES.DESKTOP;
+    }
+    if (count <= NODE_VARIANCE.MEDIUM_NODES_THRESHOLD) {
+      return isMobile ? NODE_VARIANCE.MEDIUM_NODES.MOBILE : NODE_VARIANCE.MEDIUM_NODES.DESKTOP;
+    }
+    if (count <= NODE_VARIANCE.MANY_NODES_THRESHOLD) {
+      return isMobile ? NODE_VARIANCE.MANY_NODES.MOBILE : NODE_VARIANCE.MANY_NODES.DESKTOP;
+    }
+    return isMobile ? NODE_VARIANCE.LOTS_OF_NODES.MOBILE : NODE_VARIANCE.LOTS_OF_NODES.DESKTOP;
   };
 
   // Calculate the radiusVariance based on node count
@@ -74,7 +99,7 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
     
     // Apply very slight random offset to angle for natural look
     // More nodes = less angle variance to prevent overlaps
-    const angleVariance = Math.PI / (180 * Math.max(1, nodeCount / 4)); // scales down as nodes increase
+    const angleVariance = Math.PI / (LAYOUT.ANGLE_VARIANCE.BASE_DIVISOR * Math.max(1, nodeCount / LAYOUT.ANGLE_VARIANCE.NODE_COUNT_DIVISOR));
     const angleOffset = (Math.random() * 2 - 1) * angleVariance;
     const finalAngle = angle + angleOffset;
     
@@ -103,15 +128,9 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
         );
         
         // Modify edge preference based on algorithm
-        let circleDistanceFactor;
-        if (algorithm === 'dijkstra') {
-          // For Dijkstra, emphasize more diverse path options with varying weights
-          // Prefer a mix of short and medium-distance edges to showcase greedy selection
-          circleDistanceFactor = 1 + (circleDistance * 0.15); // Less penalty for distance
-        } else {
-          // For Bellman-Ford, keep the original formula
-          circleDistanceFactor = 1 + (circleDistance * 0.2);
-        }
+        const circleDistanceFactor = algorithm === 'dijkstra'
+          ? 1 + (circleDistance * EDGE_PREFERENCES.CIRCLE_DISTANCE_FACTOR.DIJKSTRA)
+          : 1 + (circleDistance * EDGE_PREFERENCES.CIRCLE_DISTANCE_FACTOR.BELLMAN_FORD);
         
         // Adjusted distance that factors in both physical distance and circle position
         const adjustedDist = dist * circleDistanceFactor;
@@ -187,8 +206,7 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
     
     // If we already have an edge in the opposite direction, 
     // consider skipping this one to avoid bidirectional edges
-    // Skip with 80% probability to reduce bidirectional edges
-    if (hasOppositeEdge && Math.random() < 0.8) {
+    if (hasOppositeEdge && Math.random() < EDGE_PREFERENCES.BIDIRECTIONAL_SKIP_CHANCE) {
       return;
     }
     
@@ -200,31 +218,30 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
     if (algorithm === 'dijkstra') {
       // For Dijkstra: create a more varied distribution of weights
       // with some clustering to showcase the greedy selection better
-      if (Math.random() < 0.3) {
+      if (Math.random() < WEIGHTS.DIJKSTRA.SMALL_WEIGHT_CHANCE) {
         // Small weights (emphasize shorter paths)
-        w = Math.floor(Math.random() * 5) + minWeight;
-      } else if (Math.random() < 0.7) {
+        w = Math.floor(Math.random() * WEIGHTS.DIJKSTRA.SMALL_RANGE) + minWeight;
+      } else if (Math.random() < WEIGHTS.DIJKSTRA.MEDIUM_WEIGHT_CHANCE) {
         // Medium weights (most common)
-        w = Math.floor(Math.random() * 7) + minWeight + 4;
+        w = Math.floor(Math.random() * WEIGHTS.DIJKSTRA.MEDIUM_RANGE) + minWeight + WEIGHTS.DIJKSTRA.MEDIUM_OFFSET;
       } else {
         // Larger weights (few, to have some challenging paths)
-        w = Math.floor(Math.random() * 5) + maxWeight - 4;
+        w = Math.floor(Math.random() * WEIGHTS.DIJKSTRA.LARGE_RANGE) + maxWeight - WEIGHTS.DIJKSTRA.LARGE_OFFSET_FROM_MAX;
       }
     } else if (algorithm === 'bellmanford') {
       // For Bellman-Ford: more uniform distribution with occasional extremes
-      if (Math.random() < 0.7) {
+      if (Math.random() < WEIGHTS.BELLMAN_FORD.STANDARD_WEIGHT_CHANCE) {
         // Standard weights
         w = Math.floor(Math.random() * weightRange) + minWeight;
       } else {
         // Occasional larger weights to emphasize algorithm's capability
-        w = Math.floor(Math.random() * 10) + maxWeight - 9;
+        w = Math.floor(Math.random() * WEIGHTS.BELLMAN_FORD.LARGE_WEIGHT_RANGE) + maxWeight - WEIGHTS.BELLMAN_FORD.LARGE_OFFSET_FROM_MAX;
       }
       
       // Negative edges logic - only allow if using Bellman-Ford
-      // Increase probability slightly to make them more prominent
-      if (allowNegativeEdges && Math.random() < 0.25) {
-        // More significant negative weights (-1 to -12)
-        w = -Math.floor(Math.random() * 12 + 1);
+      if (allowNegativeEdges && Math.random() < NEGATIVE_EDGES.CREATION_CHANCE) {
+        // More significant negative weights
+        w = -Math.floor(Math.random() * NEGATIVE_EDGES.WEIGHT_RANGE + NEGATIVE_EDGES.WEIGHT_MIN);
       }
     } else {
       // Default weight calculation for any other algorithm
@@ -253,14 +270,14 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   const maxPossibleEdges = nodeCount * (nodeCount - 1);
   
   // Adaptive density - reduces automatically for larger graphs
-  // Density capped at 0.5 (50%) to prevent overcrowding
-  const maxDensity = Math.min(0.5, 0.8 - (nodeCount * 0.04));
+  const maxDensity = Math.min(DENSITY.MAX_CAP, DENSITY.BASE - (nodeCount * DENSITY.SCALE_PER_NODE));
   
   // Adjust density for mobile to reduce edge clutter
-  // For Dijkstra, allow slightly higher density to show more path options
-  const densityMultiplier = algorithm === 'dijkstra' ? 1.05 : 1.0;
+  const densityMultiplier = algorithm === 'dijkstra' 
+    ? DENSITY.DIJKSTRA_MULTIPLIER 
+    : DENSITY.BELLMAN_FORD_MULTIPLIER;
   const effectiveDensity = isMobile 
-    ? Math.min(density * densityMultiplier, maxDensity * 0.7) 
+    ? Math.min(density * densityMultiplier, maxDensity * DENSITY.MOBILE_MULTIPLIER) 
     : Math.min(density * densityMultiplier, maxDensity);
   
   const targetEdgeCount = Math.ceil(maxPossibleEdges * effectiveDensity);
@@ -270,20 +287,20 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   // Prefer edges between nodes that are close in the circle
   // and avoid creating bidirectional edges or crossing the center
   const shuffled = [...possibleEdges].filter(edge => {
-    // Skip edge if it would create a bidirectional edge (80% of the time)
+    // Skip edge if it would create a bidirectional edge
     const oppositeEdgeKey = `${edge.target}-${edge.source}`;
-    if (edgeSet.has(oppositeEdgeKey) && Math.random() < 0.8) {
+    if (edgeSet.has(oppositeEdgeKey) && Math.random() < EDGE_PREFERENCES.BIDIRECTIONAL_SKIP_CHANCE) {
       return false;
     }
     
-    // Skip edges that cross directly through the center (50% of the time)
+    // Skip edges that cross directly through the center
     // These are edges between almost opposite nodes on the circle
     const circleDistanceRatio = edge.circleDistance / (nodeCount / 2);
     
-    // For Dijkstra, allow a few more long-distance edges to create 
-    // interesting path choices that demonstrate greedy selection
-    const skipProbability = algorithm === 'dijkstra' ? 0.4 : 0.5;
-    if (circleDistanceRatio > 0.8 && Math.random() < skipProbability) {
+    const skipProbability = algorithm === 'dijkstra' 
+      ? EDGE_PREFERENCES.CENTER_CROSS_SKIP_CHANCE.DIJKSTRA 
+      : EDGE_PREFERENCES.CENTER_CROSS_SKIP_CHANCE.BELLMAN_FORD;
+    if (circleDistanceRatio > EDGE_PREFERENCES.CENTER_CROSS_THRESHOLD && Math.random() < skipProbability) {
       return false;
     }
     
@@ -291,8 +308,8 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   }).sort((a, b) => {
     // Factor in both geometric distance and position in the circle
     // with some randomness to avoid too regular patterns
-    const aScore = a.adjustedDistance + Math.random() * 20;
-    const bScore = b.adjustedDistance + Math.random() * 20;
+    const aScore = a.adjustedDistance + Math.random() * EDGE_PREFERENCES.SORT_RANDOM_FACTOR;
+    const bScore = b.adjustedDistance + Math.random() * EDGE_PREFERENCES.SORT_RANDOM_FACTOR;
     return aScore - bScore;
   });
   
@@ -302,9 +319,9 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   }
 
   // Create a small negative cycle if appropriate
-  if (algorithm === 'bellmanford' && allowNegativeEdges && Math.random() < 0.4) { // Increased probability
+  if (algorithm === 'bellmanford' && allowNegativeEdges && Math.random() < NEGATIVE_CYCLE.CREATION_CHANCE) {
     // Create a small negative cycle using a sequence of distinct nodes
-    const cycleSize = Math.min(3, Math.floor(nodeCount / 2)); // Keep cycle size reasonable 
+    const cycleSize = Math.min(NEGATIVE_CYCLE.MAX_SIZE, Math.floor(nodeCount / 2));
     let startPos = Math.floor(Math.random() * nodeCount);
     
     // Create array of node indices for the cycle (no duplicate nodes)
@@ -340,12 +357,12 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
         e.source === source && e.target === target
       );
       
-      let weight = Math.floor(Math.random() * 10) + 1; // Slightly larger weights for cycle visualization
+      let weight = Math.floor(Math.random() * NEGATIVE_CYCLE.EDGE_WEIGHT_RANGE) + NEGATIVE_CYCLE.EDGE_WEIGHT_MIN;
       totalWeight += weight;
       
       if (existingEdgeIndex !== -1) {
         newEdges[existingEdgeIndex].weight = weight;
-        newEdges[existingEdgeIndex].inNegativeCycle = true; // Mark as part of a negative cycle
+        newEdges[existingEdgeIndex].inNegativeCycle = true;
         cycleEdges.push(newEdges[existingEdgeIndex]);
       } else {
         const newEdge = {
@@ -355,8 +372,8 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
           weight,
           status: 'unvisited',
           hasBidirectional: false,
-          circleDistance: 1, // Adjacent nodes in cycle
-          inNegativeCycle: true // Mark as part of a negative cycle
+          circleDistance: 1,
+          inNegativeCycle: true
         };
         newEdges.push(newEdge);
         edgeSet.add(edgeKey);
@@ -367,7 +384,8 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
     // Make the cycle negative by making one edge negative enough
     if (totalWeight > 0 && cycleEdges.length === cycleSize) {
       const edgeToMakeNegative = cycleEdges[cycleSize - 1];
-      edgeToMakeNegative.weight = -(totalWeight + Math.floor(Math.random() * 3) + 1); // Slightly more negative
+      const extraNegative = Math.floor(Math.random() * NEGATIVE_CYCLE.EXTRA_NEGATIVE_RANGE) + NEGATIVE_CYCLE.EXTRA_NEGATIVE_MIN;
+      edgeToMakeNegative.weight = -(totalWeight + extraNegative);
       edgeToMakeNegative.isNegative = true;
       hasNegativeCycle = true;
     }
@@ -377,7 +395,7 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
     ...graphParams,
     sourceNode: sourceNodeIdx,
     hasNegativeCycle,
-    algorithm // Include algorithm type in params for reference
+    algorithm
   };
 
   return { newNodes, newEdges, newParams };

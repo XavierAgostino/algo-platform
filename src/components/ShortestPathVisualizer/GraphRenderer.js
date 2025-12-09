@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 /**
  * A pure "presentational" component that draws nodes and edges in the SVG.
@@ -25,93 +25,16 @@ function GraphRenderer({
   hasNegativeCycle = false
 }) {
   // Check if we're on mobile based on user agent and screen size
-  const isMobile =
-    typeof window !== "undefined" &&
-    (window.innerWidth < 768 ||
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent
-      ));
+  const isMobile = useMemo(() => {
+    return typeof window !== "undefined" &&
+      (window.innerWidth < 768 ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        ));
+  }, []);
 
-  // Create a map to track edge weight label positions and prevent overlap
-  const usedLabelPositions = new Map();
-  
-  // Helper to get a unique key for a position (for collision detection)
-  const getPositionKey = (x, y) => {
-    // Round to the nearest 5 pixels to create collision "cells"
-    const gridSize = isMobile ? 15 : 10;
-    const cellX = Math.round(x / gridSize);
-    const cellY = Math.round(y / gridSize);
-    return `${cellX},${cellY}`;
-  };
-  
-  // Helper to check if a position is already in use
-  const isPositionUsed = (x, y) => {
-    const key = getPositionKey(x, y);
-    return usedLabelPositions.has(key);
-  };
-  
-  // Mark a position as used
-  const markPositionUsed = (x, y) => {
-    const key = getPositionKey(x, y);
-    usedLabelPositions.set(key, true);
-  };
-  
-  // Find a nearby non-conflicting position for a label
-  const findNonConflictingPosition = (baseX, baseY, angle, attempts = 8) => { // Increased attempts for better placement
-    // First try the original position
-    if (!isPositionUsed(baseX, baseY)) {
-      markPositionUsed(baseX, baseY);
-      return { x: baseX, y: baseY };
-    }
-    
-    // Try positions along and perpendicular to the edge
-    const perpAngle = angle + Math.PI / 2;
-    let offset = isMobile ? 20 : 15;
-    
-    for (let i = 1; i <= attempts; i++) {
-      // Try perpendicular offset
-      const perpX = baseX + Math.cos(perpAngle) * offset * i;
-      const perpY = baseY + Math.sin(perpAngle) * offset * i;
-      
-      if (!isPositionUsed(perpX, perpY)) {
-        markPositionUsed(perpX, perpY);
-        return { x: perpX, y: perpY };
-      }
-      
-      // Try moving along the edge
-      const alongX = baseX + Math.cos(angle) * offset * i * 0.5;
-      const alongY = baseY + Math.sin(angle) * offset * i * 0.5;
-      
-      if (!isPositionUsed(alongX, alongY)) {
-        markPositionUsed(alongX, alongY);
-        return { x: alongX, y: alongY };
-      }
-      
-      // Try diagonals for more options
-      const diagX1 = baseX + Math.cos(perpAngle + Math.PI/4) * offset * i;
-      const diagY1 = baseY + Math.sin(perpAngle + Math.PI/4) * offset * i;
-      
-      if (!isPositionUsed(diagX1, diagY1)) {
-        markPositionUsed(diagX1, diagY1);
-        return { x: diagX1, y: diagY1 };
-      }
-      
-      const diagX2 = baseX + Math.cos(perpAngle - Math.PI/4) * offset * i;
-      const diagY2 = baseY + Math.sin(perpAngle - Math.PI/4) * offset * i;
-      
-      if (!isPositionUsed(diagX2, diagY2)) {
-        markPositionUsed(diagX2, diagY2);
-        return { x: diagX2, y: diagY2 };
-      }
-    }
-    
-    // If all positions are taken, just use the original
-    markPositionUsed(baseX, baseY);
-    return { x: baseX, y: baseY };
-  };
-
-  // Helper to get algorithm-specific styles
-  const getAlgorithmSpecificStyles = () => {
+  // Helper to get algorithm-specific styles - memoized since it only depends on algorithm and isMobile
+  const styles = useMemo(() => {
     if (algorithm === 'dijkstra') {
       return {
         nodeColor: '#3b82f6',       // Bright blue for Dijkstra nodes
@@ -141,15 +64,91 @@ function GraphRenderer({
         relaxedStrokeWidth: isMobile ? 5 : 3,
       };
     }
-  };
-  
-  // Get algorithm-specific styles
-  const styles = getAlgorithmSpecificStyles();
+  }, [algorithm, isMobile]);
 
-  // RENDER EDGES
-  const renderEdges = () => {
-    // First process all edges to assign optimal weight positions
-    const processedEdges = edges.map(edge => {
+  // Heavy geometry calculations - memoized to prevent recalculation on every render
+  // This includes Bezier control points and label collision detection
+  const processedEdges = useMemo(() => {
+    // Create a map to track edge weight label positions and prevent overlap
+    const usedLabelPositions = new Map();
+    
+    // Helper to get a unique key for a position (for collision detection)
+    const getPositionKey = (x, y) => {
+      // Round to the nearest 5 pixels to create collision "cells"
+      const gridSize = isMobile ? 15 : 10;
+      const cellX = Math.round(x / gridSize);
+      const cellY = Math.round(y / gridSize);
+      return `${cellX},${cellY}`;
+    };
+    
+    // Helper to check if a position is already in use
+    const isPositionUsed = (x, y) => {
+      const key = getPositionKey(x, y);
+      return usedLabelPositions.has(key);
+    };
+    
+    // Mark a position as used
+    const markPositionUsed = (x, y) => {
+      const key = getPositionKey(x, y);
+      usedLabelPositions.set(key, true);
+    };
+    
+    // Find a nearby non-conflicting position for a label
+    const findNonConflictingPosition = (baseX, baseY, angle, attempts = 8) => {
+      // First try the original position
+      if (!isPositionUsed(baseX, baseY)) {
+        markPositionUsed(baseX, baseY);
+        return { x: baseX, y: baseY };
+      }
+      
+      // Try positions along and perpendicular to the edge
+      const perpAngle = angle + Math.PI / 2;
+      const offset = isMobile ? 20 : 15;
+      
+      for (let i = 1; i <= attempts; i++) {
+        // Try perpendicular offset
+        const perpX = baseX + Math.cos(perpAngle) * offset * i;
+        const perpY = baseY + Math.sin(perpAngle) * offset * i;
+        
+        if (!isPositionUsed(perpX, perpY)) {
+          markPositionUsed(perpX, perpY);
+          return { x: perpX, y: perpY };
+        }
+        
+        // Try moving along the edge
+        const alongX = baseX + Math.cos(angle) * offset * i * 0.5;
+        const alongY = baseY + Math.sin(angle) * offset * i * 0.5;
+        
+        if (!isPositionUsed(alongX, alongY)) {
+          markPositionUsed(alongX, alongY);
+          return { x: alongX, y: alongY };
+        }
+        
+        // Try diagonals for more options
+        const diagX1 = baseX + Math.cos(perpAngle + Math.PI/4) * offset * i;
+        const diagY1 = baseY + Math.sin(perpAngle + Math.PI/4) * offset * i;
+        
+        if (!isPositionUsed(diagX1, diagY1)) {
+          markPositionUsed(diagX1, diagY1);
+          return { x: diagX1, y: diagY1 };
+        }
+        
+        const diagX2 = baseX + Math.cos(perpAngle - Math.PI/4) * offset * i;
+        const diagY2 = baseY + Math.sin(perpAngle - Math.PI/4) * offset * i;
+        
+        if (!isPositionUsed(diagX2, diagY2)) {
+          markPositionUsed(diagX2, diagY2);
+          return { x: diagX2, y: diagY2 };
+        }
+      }
+      
+      // If all positions are taken, just use the original
+      markPositionUsed(baseX, baseY);
+      return { x: baseX, y: baseY };
+    };
+
+    // Process all edges to assign optimal weight positions
+    return edges.map(edge => {
       const source = nodes[edge.source];
       const target = nodes[edge.target];
       if (!source || !target) return null;
@@ -173,32 +172,46 @@ function GraphRenderer({
       const isShorterEdge = edgeLength < 100;
       const isLongerEdge = edgeLength > 180;
       
-      // Determine weight label position
-      let positionFactor = 0.5; // default middle
-      if (isLongerEdge) {
-        positionFactor = 0.5; // middle for long edges
-      } else if (isShorterEdge) {
-        positionFactor = 0.4; // slightly offset for shorter edges
-      }
-      
-      // Calculate midpoint
-      const midX = sourceX + (targetX - sourceX) * positionFactor;
-      const midY = sourceY + (targetY - sourceY) * positionFactor;
-      
-      // Determine perpendicular offset
+      // Calculate Bezier curve control point for smooth edges
       const perpAngle = angle + Math.PI / 2;
-      const baseOffset = isMobile ? 12 : 8;
-      const lengthAdjustment = isShorterEdge ? 0.8 : (isLongerEdge ? 1.2 : 1.0);
-      const offset = baseOffset * lengthAdjustment;
+      // Curve intensity scales with edge length - longer edges get more curve
+      const curveIntensity = isMobile 
+        ? Math.min(edgeLength * 0.12, 25) 
+        : Math.min(edgeLength * 0.1, 20);
       
-      // Calculate initial label position
-      const labelX = midX + Math.cos(perpAngle) * offset;
-      const labelY = midY + Math.sin(perpAngle) * offset;
+      // Calculate midpoint of the straight line
+      const straightMidX = (sourceX + targetX) / 2;
+      const straightMidY = (sourceY + targetY) / 2;
+      
+      // Control point for quadratic Bezier - offset perpendicular to the edge
+      const controlX = straightMidX + Math.cos(perpAngle) * curveIntensity;
+      const controlY = straightMidY + Math.sin(perpAngle) * curveIntensity;
+      
+      // Calculate the actual midpoint of the Bezier curve (at t=0.5)
+      // For quadratic Bezier: B(0.5) = 0.25*P0 + 0.5*P1 + 0.25*P2
+      const bezierMidX = 0.25 * sourceX + 0.5 * controlX + 0.25 * targetX;
+      const bezierMidY = 0.25 * sourceY + 0.5 * controlY + 0.25 * targetY;
+      
+      // Determine weight label position relative to the Bezier curve midpoint
+      const baseOffset = isMobile ? 14 : 10;
+      const lengthAdjustment = isShorterEdge ? 0.8 : (isLongerEdge ? 1.2 : 1.0);
+      const labelOffset = baseOffset * lengthAdjustment;
+      
+      // Calculate initial label position (offset from Bezier midpoint)
+      const labelX = bezierMidX + Math.cos(perpAngle) * labelOffset;
+      const labelY = bezierMidY + Math.sin(perpAngle) * labelOffset;
       
       // Find a non-conflicting position for this label
       const { x: adjustedLabelX, y: adjustedLabelY } = findNonConflictingPosition(
         labelX, labelY, angle
       );
+      
+      // Calculate the tangent angle at the end of the curve for the arrowhead
+      // For quadratic Bezier, the tangent at t=1 is the direction from control point to end point
+      const endTangentAngle = Math.atan2(targetY - controlY, targetX - controlX);
+      
+      // Create the Bezier curve path
+      const bezierPath = `M ${sourceX} ${sourceY} Q ${controlX} ${controlY} ${targetX} ${targetY}`;
       
       return {
         ...edge,
@@ -208,43 +221,45 @@ function GraphRenderer({
         sourceY,
         targetX,
         targetY,
+        controlX,
+        controlY,
         angle,
+        endTangentAngle,
         adjustedLabelX,
-        adjustedLabelY
+        adjustedLabelY,
+        bezierPath
       };
     }).filter(Boolean);
+  }, [nodes, edges, isMobile]);
 
-    // Now render all edges with their adjusted label positions
+  // RENDER EDGES - uses memoized processedEdges
+  const renderEdges = () => {
     return processedEdges.map(edge => {
       const { 
         sourceX, sourceY, targetX, targetY, 
-        angle, adjustedLabelX, adjustedLabelY,
-        source, target  // Add these to properly extract source and target
+        endTangentAngle, adjustedLabelX, adjustedLabelY,
+        source, target, bezierPath
       } = edge;
 
-      // Arrow properties
-      const arrowSize = isMobile ? 14 : 10; // Larger on mobile
+      // Arrow properties - use end tangent angle for proper arrow direction on curved path
+      const arrowSize = isMobile ? 14 : 10;
       const arrowAngle = Math.PI / 8;
 
       // Base color logic
-      let color = styles.edgeColor; // unvisited default
-      let strokeWidth = isMobile ? 4 : 2; // Thicker lines on mobile
+      let color = styles.edgeColor;
+      let strokeWidth = isMobile ? 4 : 2;
       let strokeDasharray = "none";
       
       // Handle negative edges with special styling for Bellman-Ford
       if (algorithm === 'bellmanford' && edge.isNegative) {
-        // Negative edge styling for Bellman-Ford
-        color = styles.negativeEdgeColor; // Purple for negative edges
-        strokeWidth = isMobile ? 4.5 : 2.5; // Slightly thicker
-        
-        // Use dashed style for negative edges to make them stand out
+        color = styles.negativeEdgeColor;
+        strokeWidth = isMobile ? 4.5 : 2.5;
         strokeDasharray = isMobile ? "6,4" : "4,3";
       }
       
       // Special styling for edges in negative cycles
       if (algorithm === 'bellmanford' && edge.inNegativeCycle) {
         color = edge.status === 'negativecycle' ? styles.negativeCycleColor : color;
-        // Add a subtle animation effect to negative cycle edges even before detection
         strokeDasharray = edge.status === 'negativecycle' ? "5,5" : strokeDasharray;
       }
 
@@ -267,7 +282,7 @@ function GraphRenderer({
           strokeWidth = isMobile ? 6 : 4;
           break;
         case "negativecycle":
-          color = styles.negativeCycleColor; // Pink/magenta for negative cycles
+          color = styles.negativeCycleColor;
           strokeWidth = isMobile ? 6 : 4;
           strokeDasharray = "5,5";
           break;
@@ -288,12 +303,25 @@ function GraphRenderer({
           className="cursor-pointer"
           data-tooltip={`${source.label} → ${target.label} (${edge.weight})`}
         >
-          {/* Main line */}
-          <line
-            x1={sourceX}
-            y1={sourceY}
-            x2={targetX}
-            y2={targetY}
+          {/* For Bellman-Ford, add a glow effect to negative edges (rendered first for layering) */}
+          {algorithm === 'bellmanford' && edge.isNegative && (
+            <path
+              d={bezierPath}
+              fill="none"
+              stroke={styles.negativeEdgeColor}
+              strokeWidth={strokeWidth + 4}
+              strokeDasharray={strokeDasharray}
+              strokeLinecap="round"
+              strokeOpacity="0.2"
+              filter="blur(4px)"
+              className="transition-all duration-300 ease-in-out"
+            />
+          )}
+          
+          {/* Main curved path - Bezier curve */}
+          <path
+            d={bezierPath}
+            fill="none"
             stroke={color}
             strokeWidth={strokeWidth}
             strokeDasharray={strokeDasharray}
@@ -304,36 +332,19 @@ function GraphRenderer({
             }`}
           />
 
-          {/* Arrow head */}
+          {/* Arrow head - positioned at end of curve with correct tangent angle */}
           <polygon
             points={`
               ${targetX},${targetY}
-              ${targetX - arrowSize * Math.cos(angle - arrowAngle)},${
-              targetY - arrowSize * Math.sin(angle - arrowAngle)
+              ${targetX - arrowSize * Math.cos(endTangentAngle - arrowAngle)},${
+              targetY - arrowSize * Math.sin(endTangentAngle - arrowAngle)
             }
-              ${targetX - arrowSize * Math.cos(angle + arrowAngle)},${
-              targetY - arrowSize * Math.sin(angle + arrowAngle)
+              ${targetX - arrowSize * Math.cos(endTangentAngle + arrowAngle)},${
+              targetY - arrowSize * Math.sin(endTangentAngle + arrowAngle)
             }
             `}
             fill={color}
           />
-          
-          {/* For Bellman-Ford, add a glow effect to negative edges */}
-          {algorithm === 'bellmanford' && edge.isNegative && (
-            <line
-              x1={sourceX}
-              y1={sourceY}
-              x2={targetX}
-              y2={targetY}
-              stroke={styles.negativeEdgeColor}
-              strokeWidth={strokeWidth + 4}
-              strokeDasharray={strokeDasharray}
-              strokeLinecap="round"
-              strokeOpacity="0.2"
-              filter="blur(4px)"
-              className="transition-all duration-300 ease-in-out"
-            />
-          )}
 
           {/* Weight label - with adjusted position to avoid overlaps */}
           <rect
@@ -341,7 +352,7 @@ function GraphRenderer({
             y={adjustedLabelY - (isMobile ? 15 : 12)}
             width={isMobile ? 30 : 24}
             height={isMobile ? 30 : 24}
-            fill={edge.isNegative ? "#f0ecfe" : styles.weightLabelBg} // Light purple bg for negative weights
+            fill={edge.isNegative ? "#f0ecfe" : styles.weightLabelBg}
             stroke={color}
             strokeWidth="1.5"
             rx="6"
@@ -356,7 +367,7 @@ function GraphRenderer({
             dominantBaseline="middle"
             fontWeight="bold"
             fontSize={isMobile ? "14" : "12"}
-            fill={edge.isNegative ? "#7e22ce" : "#333333"} // Purple text for negative weights
+            fill={edge.isNegative ? "#7e22ce" : "#333333"}
           >
             {edge.weight}
           </text>
@@ -429,7 +440,7 @@ function GraphRenderer({
               cx={node.x}
               cy={node.y}
               r={nodeRadius + 8}
-              fill="rgba(219, 39, 119, 0.3)" // Pink glow for negative cycle
+              fill="rgba(219, 39, 119, 0.3)"
               className="animate-pulse"
             />
           )}
@@ -450,7 +461,7 @@ function GraphRenderer({
             cx={node.x}
             cy={node.y}
             r={nodeRadius}
-            fill={isPartOfNegativeCycle ? '#db2777' : fillColor} // Pink for negative cycle nodes
+            fill={isPartOfNegativeCycle ? '#db2777' : fillColor}
             stroke={isPartOfNegativeCycle ? '#be185d' : strokeColor}
             strokeWidth={strokeWidth}
             filter="drop-shadow(0px 2px 4px rgba(0,0,0,0.25))"
@@ -477,7 +488,7 @@ function GraphRenderer({
                 cx={node.x}
                 cy={node.y - (isMobile ? 26 : 30)}
                 r={isMobile ? 14 : 14}
-                fill={isPartOfNegativeCycle ? "#fecdd3" : styles.weightLabelBg} // Light pink bg for negative cycle
+                fill={isPartOfNegativeCycle ? "#fecdd3" : styles.weightLabelBg}
                 stroke={isPartOfNegativeCycle ? '#be185d' : strokeColor}
                 strokeWidth="1.5"
                 filter="drop-shadow(0px 2px 3px rgba(0,0,0,0.15))"
