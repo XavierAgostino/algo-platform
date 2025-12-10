@@ -2905,6 +2905,11 @@ code {
   background-color: rgb(69 26 3 / 0.5);
 }
 
+:is(.dark .dark\:bg-blue-500) {
+  --tw-bg-opacity: 1;
+  background-color: rgb(59 130 246 / var(--tw-bg-opacity));
+}
+
 :is(.dark .dark\:bg-emerald-900) {
   --tw-bg-opacity: 1;
   background-color: rgb(6 78 59 / var(--tw-bg-opacity));
@@ -2946,6 +2951,14 @@ code {
 :is(.dark .dark\:bg-neutral-900) {
   --tw-bg-opacity: 1;
   background-color: rgb(23 23 23 / var(--tw-bg-opacity));
+}
+
+:is(.dark .dark\:bg-orange-900\/30) {
+  background-color: rgb(124 45 18 / 0.3);
+}
+
+:is(.dark .dark\:bg-red-900\/50) {
+  background-color: rgb(127 29 29 / 0.5);
 }
 
 :is(.dark .dark\:bg-rose-900) {
@@ -3081,6 +3094,11 @@ code {
 :is(.dark .dark\:text-purple-400) {
   --tw-text-opacity: 1;
   color: rgb(192 132 252 / var(--tw-text-opacity));
+}
+
+:is(.dark .dark\:text-red-200) {
+  --tw-text-opacity: 1;
+  color: rgb(254 202 202 / var(--tw-text-opacity));
 }
 
 :is(.dark .dark\:text-rose-300) {

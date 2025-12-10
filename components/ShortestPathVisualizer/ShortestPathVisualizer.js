@@ -1527,19 +1527,19 @@ const ShortestPathVisualizer = () => {
                 <div className="lg:hidden grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                   {algorithm === "dijkstra" ? (
                     <>
-                      <div className="bg-white shadow-sm rounded-lg p-2 border border-blue-200">
-                        <h3 className="text-xs font-bold mb-1 text-blue-800">
+                      <div className="bg-white dark:bg-zinc-800 shadow-sm rounded-lg p-2 border border-blue-200 dark:border-zinc-700">
+                        <h3 className="text-xs font-bold mb-1 text-blue-800 dark:text-blue-400">
                           Distances
                         </h3>
-                        <div className="max-h-24 overflow-y-auto border border-slate-100 rounded">
+                        <div className="max-h-24 overflow-y-auto border border-slate-100 dark:border-zinc-700 rounded">
                           {Object.keys(distanceArray).length > 0 ? (
                             <table className="w-full border-collapse text-xs">
-                              <thead className="bg-slate-50 sticky top-0">
+                              <thead className="bg-slate-50 dark:bg-zinc-700 sticky top-0">
                                 <tr>
-                                  <th className="p-1 text-left border-b">
+                                  <th className="p-1 text-left border-b dark:border-zinc-600 dark:text-zinc-200">
                                     Node
                                   </th>
-                                  <th className="p-1 text-left border-b">
+                                  <th className="p-1 text-left border-b dark:border-zinc-600 dark:text-zinc-200">
                                     Dist
                                   </th>
                                 </tr>
@@ -1550,10 +1550,10 @@ const ShortestPathVisualizer = () => {
                                   .slice(0, 5)
                                   .map((nodeId) => (
                                     <tr key={nodeId}>
-                                      <td className="p-1 border-b">
+                                      <td className="p-1 border-b dark:border-zinc-700 dark:text-zinc-200">
                                         {nodes[nodeId]?.label}
                                       </td>
-                                      <td className="p-1 border-b">
+                                      <td className="p-1 border-b dark:border-zinc-700 dark:text-zinc-200">
                                         {distanceArray[nodeId] === Infinity
                                           ? "∞"
                                           : distanceArray[nodeId]}
@@ -1563,25 +1563,25 @@ const ShortestPathVisualizer = () => {
                               </tbody>
                             </table>
                           ) : (
-                            <div className="text-slate-500 text-center py-2 px-2 text-xs">
+                            <div className="text-slate-500 dark:text-zinc-400 text-center py-2 px-2 text-xs">
                               No data
                             </div>
                           )}
                         </div>
                       </div>
-                      <div className="bg-white shadow-sm rounded-lg p-2 border border-blue-200">
-                        <h3 className="text-xs font-bold mb-1 text-blue-800">
+                      <div className="bg-white dark:bg-zinc-800 shadow-sm rounded-lg p-2 border border-blue-200 dark:border-zinc-700">
+                        <h3 className="text-xs font-bold mb-1 text-blue-800 dark:text-blue-400">
                           Priority Queue
                         </h3>
-                        <div className="max-h-24 overflow-y-auto border border-slate-100 rounded">
+                        <div className="max-h-24 overflow-y-auto border border-slate-100 dark:border-zinc-700 rounded">
                           {minHeap.length > 0 ? (
                             <table className="w-full border-collapse text-xs">
-                              <thead className="bg-slate-50 sticky top-0">
+                              <thead className="bg-slate-50 dark:bg-zinc-700 sticky top-0">
                                 <tr>
-                                  <th className="p-1 text-left border-b">
+                                  <th className="p-1 text-left border-b dark:border-zinc-600 dark:text-zinc-200">
                                     Node
                                   </th>
-                                  <th className="p-1 text-left border-b">
+                                  <th className="p-1 text-left border-b dark:border-zinc-600 dark:text-zinc-200">
                                     Dist
                                   </th>
                                 </tr>
@@ -1590,12 +1590,12 @@ const ShortestPathVisualizer = () => {
                                 {minHeap.slice(0, 5).map((item, i) => (
                                   <tr
                                     key={i}
-                                    className={i === 0 ? "bg-orange-50" : ""}
+                                    className={i === 0 ? "bg-orange-50 dark:bg-orange-900/30" : ""}
                                   >
-                                    <td className="p-1 border-b">
+                                    <td className="p-1 border-b dark:border-zinc-700 dark:text-zinc-200">
                                       {nodes[item.id]?.label}
                                     </td>
-                                    <td className="p-1 border-b">
+                                    <td className="p-1 border-b dark:border-zinc-700 dark:text-zinc-200">
                                       {item.dist}
                                     </td>
                                   </tr>
@@ -1603,7 +1603,7 @@ const ShortestPathVisualizer = () => {
                               </tbody>
                             </table>
                           ) : (
-                            <div className="text-slate-500 text-center py-2 px-2 text-xs">
+                            <div className="text-slate-500 dark:text-zinc-400 text-center py-2 px-2 text-xs">
                               Empty
                             </div>
                           )}
@@ -1612,19 +1612,19 @@ const ShortestPathVisualizer = () => {
                     </>
                   ) : (
                     <>
-                      <div className="bg-white shadow-sm rounded-lg p-2 border border-blue-200">
-                        <h3 className="text-xs font-bold mb-1 text-blue-800">
+                      <div className="bg-white dark:bg-zinc-800 shadow-sm rounded-lg p-2 border border-blue-200 dark:border-zinc-700">
+                        <h3 className="text-xs font-bold mb-1 text-blue-800 dark:text-blue-400">
                           Distances
                         </h3>
-                        <div className="max-h-24 overflow-y-auto border border-slate-100 rounded">
+                        <div className="max-h-24 overflow-y-auto border border-slate-100 dark:border-zinc-700 rounded">
                           {Object.keys(distanceArray).length > 0 ? (
                             <table className="w-full border-collapse text-xs">
-                              <thead className="bg-slate-50 sticky top-0">
+                              <thead className="bg-slate-50 dark:bg-zinc-700 sticky top-0">
                                 <tr>
-                                  <th className="p-1 text-left border-b">
+                                  <th className="p-1 text-left border-b dark:border-zinc-600 dark:text-zinc-200">
                                     Node
                                   </th>
-                                  <th className="p-1 text-left border-b">
+                                  <th className="p-1 text-left border-b dark:border-zinc-600 dark:text-zinc-200">
                                     Dist
                                   </th>
                                 </tr>
@@ -1635,10 +1635,10 @@ const ShortestPathVisualizer = () => {
                                   .slice(0, 5)
                                   .map((nodeId) => (
                                     <tr key={nodeId}>
-                                      <td className="p-1 border-b">
+                                      <td className="p-1 border-b dark:border-zinc-700 dark:text-zinc-200">
                                         {nodes[nodeId]?.label}
                                       </td>
-                                      <td className="p-1 border-b">
+                                      <td className="p-1 border-b dark:border-zinc-700 dark:text-zinc-200">
                                         {distanceArray[nodeId] === Infinity
                                           ? "∞"
                                           : distanceArray[nodeId]}
@@ -1648,31 +1648,31 @@ const ShortestPathVisualizer = () => {
                               </tbody>
                             </table>
                           ) : (
-                            <div className="text-slate-500 text-center py-2 px-2 text-xs">
+                            <div className="text-slate-500 dark:text-zinc-400 text-center py-2 px-2 text-xs">
                               No data
                             </div>
                           )}
                         </div>
                       </div>
-                      <div className="bg-white shadow-sm rounded-lg p-2 border border-blue-200">
+                      <div className="bg-white dark:bg-zinc-800 shadow-sm rounded-lg p-2 border border-blue-200 dark:border-zinc-700">
                         <div className="flex justify-between items-center mb-1">
-                          <h3 className="text-xs font-bold text-blue-800">
+                          <h3 className="text-xs font-bold text-blue-800 dark:text-blue-400">
                             Iteration
                           </h3>
                           {negativeCycleDetected && (
-                            <span className="px-2 py-0.5 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                            <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200 text-xs font-medium rounded-full">
                               Negative Cycle!
                             </span>
                           )}
                         </div>
-                        <div className="border border-slate-100 p-2 rounded bg-white">
+                        <div className="border border-slate-100 dark:border-zinc-700 p-2 rounded bg-white dark:bg-zinc-900">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium">
+                            <span className="text-xs font-medium dark:text-zinc-200">
                               {iterationCount} of {nodes.length}
                             </span>
-                            <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div className="w-24 bg-gray-200 dark:bg-zinc-700 rounded-full h-2">
                               <div
-                                className="bg-blue-600 h-2 rounded-full"
+                                className="bg-blue-600 dark:bg-blue-500 h-2 rounded-full"
                                 style={{
                                   width: `${
                                     (iterationCount /
