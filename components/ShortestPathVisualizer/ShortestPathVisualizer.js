@@ -1043,8 +1043,8 @@ const ShortestPathVisualizer = () => {
               />
             )}
 
-            {/* FLOATING CONTROL BAR - Desktop only, hidden in manual mode */}
-            <div className={`${isMobile || mode === "manual" ? "hidden" : "fixed bottom-5 left-1/2 -translate-x-1/2 z-40"}`}>
+            {/* FLOATING CONTROL BAR - Desktop only */}
+            <div className={`${isMobile ? "hidden" : "fixed bottom-5 left-1/2 -translate-x-1/2 z-40"}`}>
               <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-full px-6 py-4 shadow-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-4">
                 {/* Step Progress Indicator - Compact */}
                 {steps.length > 0 && (
