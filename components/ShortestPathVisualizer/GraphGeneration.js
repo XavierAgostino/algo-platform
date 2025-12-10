@@ -10,10 +10,13 @@ import { LAYOUT, NEGATIVE_CYCLE } from '../../constants/graphConfig';
 import {
   getAlgorithmConfig,
   generateCircularNodes,
+  generateSpatialNodes,
   generatePossibleEdges,
   generateSpanningTree,
   calculateEffectiveDensity,
   generateRandomEdges,
+  getEuclideanWeight,
+  applyForceDirected,
   injectNegativeCycle,
 } from './graphGenerationHelpers';
 
@@ -34,13 +37,11 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   // Pick a source node at random
   const sourceNodeIdx = Math.floor(Math.random() * config.nodeCount);
   
-  // 2. Geometry: Generate nodes in circular layout
-  const newNodes = generateCircularNodes(
-    config.nodeCount, 
-    svgWidth, 
-    svgHeight, 
-    isMobile
-  );
+  // 2. Geometry: Generate nodes based on graph type
+  const graphType = graphParams.graphType || 'circular';
+  const newNodes = graphType === 'spatial'
+    ? generateSpatialNodes(config.nodeCount, svgWidth, svgHeight, isMobile)
+    : generateCircularNodes(config.nodeCount, svgWidth, svgHeight, isMobile);
   
   // 3. Topology: Generate edge candidates and ensure connectivity
   const possibleEdges = generatePossibleEdges(newNodes, config.nodeCount, algorithm);
@@ -59,20 +60,50 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   );
   
   // 5. Edge Generation: Create edges with visual filtering
-  const { edges: newEdges, edgeSet } = generateRandomEdges(
+  // For spatial graphs, use Euclidean weights; for circular, use random weights
+  const useEuclideanWeights = graphType === 'spatial';
+  let { edges: newEdges, edgeSet } = generateRandomEdges(
     newNodes,
     treeEdges,
     possibleEdges,
     targetEdgeCount,
-    config,
+    {
+      ...config,
+      useEuclideanWeights,
+      viewportScale: { width: svgWidth, height: svgHeight }
+    },
     algorithm
   );
+  
+  // 5.5. Apply force-directed layout to spatial graphs (auto-applied)
+  let finalNodes = newNodes;
+  if (graphType === 'spatial') {
+    // Use fewer iterations for faster, more stable layout
+    finalNodes = applyForceDirected(newNodes, newEdges, svgWidth, svgHeight, 80);
+    
+    // Recalculate edge weights after force-directed layout using new positions
+    newEdges = newEdges.map(edge => {
+      const sourceNode = finalNodes[edge.source];
+      const targetNode = finalNodes[edge.target];
+      if (sourceNode && targetNode) {
+        const newWeight = getEuclideanWeight(
+          sourceNode, 
+          targetNode, 
+          { width: svgWidth, height: svgHeight },
+          config.minWeight,
+          config.maxWeight
+        );
+        return { ...edge, weight: newWeight };
+      }
+      return edge;
+    });
+  }
   
   // 6. Special Cases: Inject negative cycle if needed
   let hasNegativeCycle = false;
   if (algorithm === 'bellmanford' && config.allowNegativeEdges && 
       Math.random() < NEGATIVE_CYCLE.CREATION_CHANCE) {
-    hasNegativeCycle = injectNegativeCycle(newEdges, edgeSet, newNodes, config.nodeCount);
+    hasNegativeCycle = injectNegativeCycle(newEdges, edgeSet, finalNodes, config.nodeCount);
   }
   
   // 7. Return results
@@ -83,5 +114,5 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
     algorithm
   };
   
-  return { newNodes, newEdges, newParams };
+  return { newNodes: finalNodes, newEdges, newParams };
 }

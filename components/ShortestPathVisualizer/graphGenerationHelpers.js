@@ -23,22 +23,22 @@ import {
  * @returns {Object} Adjusted configuration with nodeCount, density, minWeight, maxWeight, allowNegativeEdges
  */
 export function getAlgorithmConfig(algorithm, baseParams) {
-  let { nodeCount, density, minWeight, maxWeight, allowNegativeEdges } = baseParams;
+  let { nodeCount, density, minWeight, maxWeight, allowNegativeEdges, isDirected } = baseParams;
   
   if (algorithm === 'dijkstra') {
-    // Smaller weight range for Dijkstra
-    minWeight = WEIGHTS.DIJKSTRA.MIN;
-    maxWeight = WEIGHTS.DIJKSTRA.MAX;
+    // Always respect user's weight range, just ensure minimums
+    minWeight = Math.max(minWeight, 1); // Dijkstra needs positive weights
+    maxWeight = Math.max(maxWeight, minWeight + 1); // Ensure max > min
     
     // Slightly increase edge density for Dijkstra to show more path options
     density = Math.min(density * DENSITY.DIJKSTRA_DENSITY_BOOST, DENSITY.DIJKSTRA_DENSITY_CAP);
   } else if (algorithm === 'bellmanford') {
-    // Larger weight values for Bellman-Ford
+    // For Bellman-Ford, ensure minimum floors but respect user's range
     minWeight = Math.max(minWeight, WEIGHTS.BELLMAN_FORD.MIN_FLOOR);
-    maxWeight = Math.max(maxWeight, WEIGHTS.BELLMAN_FORD.MAX_FLOOR);
+    maxWeight = Math.max(maxWeight, Math.max(WEIGHTS.BELLMAN_FORD.MAX_FLOOR, minWeight + 1));
   }
   
-  return { nodeCount, density, minWeight, maxWeight, allowNegativeEdges };
+  return { nodeCount, density, minWeight, maxWeight, allowNegativeEdges, isDirected };
 }
 
 /**
@@ -170,6 +170,87 @@ export function generateCircularNodes(nodeCount, svgWidth, svgHeight, isMobile) 
 }
 
 /**
+ * Generate nodes in a spatial/scattered layout (like cities on a map)
+ * Uses collision detection to ensure nodes don't overlap
+ * 
+ * @param {number} nodeCount - Number of nodes to generate
+ * @param {number} svgWidth - SVG container width
+ * @param {number} svgHeight - SVG container height
+ * @param {boolean} isMobile - Whether device is mobile
+ * @returns {Array} Array of node objects with {id, x, y, label}
+ */
+export function generateSpatialNodes(nodeCount, svgWidth, svgHeight, isMobile) {
+  const nodes = [];
+  const padding = Math.min(svgWidth, svgHeight) * 0.1; // 10% padding from edges
+  const minDistance = isMobile ? 80 : 100; // Minimum distance between nodes
+  const maxAttempts = 100; // Maximum attempts to place each node
+  
+  // Calculate center and use it as a bias for initial placement
+  const centerX = svgWidth / 2;
+  const centerY = svgHeight / 2;
+  const placementRadius = Math.min(svgWidth, svgHeight) * 0.35; // Start nodes within 35% of center
+  
+  for (let i = 0; i < nodeCount; i++) {
+    let placed = false;
+    let attempts = 0;
+    
+    while (!placed && attempts < maxAttempts) {
+      // Generate position biased toward center (using normal distribution approximation)
+      // This ensures nodes start more centered before force-directed
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = Math.random() * placementRadius;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+      
+      // Ensure within bounds
+      const clampedX = Math.max(padding, Math.min(svgWidth - padding, x));
+      const clampedY = Math.max(padding, Math.min(svgHeight - padding, y));
+      
+      // Check if this position is far enough from existing nodes
+      let tooClose = false;
+      for (const existingNode of nodes) {
+        const dx = clampedX - existingNode.x;
+        const dy = clampedY - existingNode.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < minDistance) {
+          tooClose = true;
+          break;
+        }
+      }
+      
+      if (!tooClose) {
+        nodes.push({
+          id: i,
+          x: clampedX,
+          y: clampedY,
+          label: String.fromCharCode(65 + i),
+        });
+        placed = true;
+      }
+      
+      attempts++;
+    }
+    
+    // If we couldn't place after max attempts, place it near center
+    if (!placed) {
+      const angle = Math.random() * 2 * Math.PI;
+      const radius = Math.random() * placementRadius;
+      const x = Math.max(padding, Math.min(svgWidth - padding, centerX + Math.cos(angle) * radius));
+      const y = Math.max(padding, Math.min(svgHeight - padding, centerY + Math.sin(angle) * radius));
+      nodes.push({
+        id: i,
+        x,
+        y,
+        label: String.fromCharCode(65 + i),
+      });
+    }
+  }
+  
+  return nodes;
+}
+
+/**
  * Generate a spanning tree using BFS-like approach
  * Ensures all nodes are reachable from the source node
  * 
@@ -263,26 +344,43 @@ export function generateEdgeWeight(algorithm, minWeight, maxWeight, allowNegativ
   let w;
   
   if (algorithm === 'dijkstra') {
-    // For Dijkstra: create a more varied distribution of weights
+    // For Dijkstra: create a more varied distribution of weights using user's range
+    // Calculate dynamic ranges based on user's min/max
+    const rangeSize = weightRange;
+    const smallRangeSize = Math.max(1, Math.floor(rangeSize * 0.3)); // 30% of range for small weights
+    const mediumRangeSize = Math.max(1, Math.floor(rangeSize * 0.4)); // 40% of range for medium weights
+    const mediumOffset = Math.max(1, Math.floor(rangeSize * 0.2)); // Start medium weights at 20% into range
+    const largeRangeSize = Math.max(1, Math.floor(rangeSize * 0.3)); // 30% of range for large weights
+    const largeOffset = Math.max(1, Math.floor(rangeSize * 0.2)); // Large weights start 20% from max
+    
     if (Math.random() < WEIGHTS.DIJKSTRA.SMALL_WEIGHT_CHANCE) {
-      // Small weights (emphasize shorter paths)
-      w = Math.floor(Math.random() * WEIGHTS.DIJKSTRA.SMALL_RANGE) + minWeight;
+      // Small weights (emphasize shorter paths) - use lower portion of range
+      w = Math.floor(Math.random() * smallRangeSize) + minWeight;
     } else if (Math.random() < WEIGHTS.DIJKSTRA.MEDIUM_WEIGHT_CHANCE) {
-      // Medium weights (most common)
-      w = Math.floor(Math.random() * WEIGHTS.DIJKSTRA.MEDIUM_RANGE) + minWeight + WEIGHTS.DIJKSTRA.MEDIUM_OFFSET;
+      // Medium weights (most common) - use middle portion of range
+      w = Math.floor(Math.random() * mediumRangeSize) + minWeight + mediumOffset;
     } else {
-      // Larger weights (few, to have some challenging paths)
-      w = Math.floor(Math.random() * WEIGHTS.DIJKSTRA.LARGE_RANGE) + maxWeight - WEIGHTS.DIJKSTRA.LARGE_OFFSET_FROM_MAX;
+      // Larger weights (few, to have some challenging paths) - use upper portion of range
+      w = Math.floor(Math.random() * largeRangeSize) + maxWeight - largeOffset;
     }
+    
+    // Ensure weight is within bounds
+    w = Math.max(minWeight, Math.min(maxWeight, w));
   } else if (algorithm === 'bellmanford') {
     // For Bellman-Ford: more uniform distribution with occasional extremes
     if (Math.random() < WEIGHTS.BELLMAN_FORD.STANDARD_WEIGHT_CHANCE) {
-      // Standard weights
+      // Standard weights - use full range
       w = Math.floor(Math.random() * weightRange) + minWeight;
     } else {
       // Occasional larger weights to emphasize algorithm's capability
-      w = Math.floor(Math.random() * WEIGHTS.BELLMAN_FORD.LARGE_WEIGHT_RANGE) + maxWeight - WEIGHTS.BELLMAN_FORD.LARGE_OFFSET_FROM_MAX;
+      // Use upper portion of user's range
+      const largeRangeSize = Math.max(1, Math.floor(weightRange * 0.3));
+      const largeOffset = Math.max(1, Math.floor(weightRange * 0.2));
+      w = Math.floor(Math.random() * largeRangeSize) + maxWeight - largeOffset;
     }
+    
+    // Ensure weight is within bounds
+    w = Math.max(minWeight, Math.min(maxWeight, w));
     
     // Negative edges logic - only allow if using Bellman-Ford
     if (allowNegativeEdges && Math.random() < NEGATIVE_EDGES.CREATION_CHANCE) {
@@ -295,6 +393,164 @@ export function generateEdgeWeight(algorithm, minWeight, maxWeight, allowNegativ
   }
   
   return w;
+}
+
+/**
+ * Calculate edge weight based on Euclidean distance between nodes
+ * Maps distance to user's weight range for realistic spatial weights
+ * 
+ * @param {Object} nodeA - Source node {x, y}
+ * @param {Object} nodeB - Target node {x, y}
+ * @param {Object} viewportScale - Viewport dimensions {width, height}
+ * @param {number} minWeight - Minimum weight from user settings
+ * @param {number} maxWeight - Maximum weight from user settings
+ * @returns {number} Weight based on distance, mapped to user's range
+ */
+export function getEuclideanWeight(nodeA, nodeB, viewportScale, minWeight = 1, maxWeight = 20) {
+  const dx = nodeB.x - nodeA.x;
+  const dy = nodeB.y - nodeA.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  // Calculate viewport diagonal for normalization
+  const viewportDiagonal = Math.sqrt(viewportScale.width ** 2 + viewportScale.height ** 2);
+  
+  // Normalize distance to 0-1 range (0 = same position, 1 = opposite corners)
+  // Use a reasonable padding to account for node placement not using full viewport
+  const maxPossibleDistance = viewportDiagonal * 0.7; // 70% of diagonal accounts for padding
+  const normalizedDistance = Math.min(1, distance / maxPossibleDistance);
+  
+  // Map normalized distance to user's weight range
+  // Closer nodes = lower weights, farther nodes = higher weights
+  const weightRange = maxWeight - minWeight;
+  const weight = Math.round(minWeight + (normalizedDistance * weightRange));
+  
+  // Ensure weight is within bounds
+  return Math.max(minWeight, Math.min(maxWeight, weight));
+}
+
+/**
+ * Apply force-directed layout to nodes for organic, natural positioning
+ * Uses simple physics simulation: repulsion, springs, and center gravity
+ * 
+ * @param {Array} nodes - Array of node objects (will be modified)
+ * @param {Array} edges - Array of edge objects
+ * @param {number} svgWidth - SVG container width
+ * @param {number} svgHeight - SVG container height
+ * @param {number} iterations - Number of simulation iterations (default: 100)
+ * @returns {Array} Updated nodes array
+ */
+export function applyForceDirected(nodes, edges, svgWidth, svgHeight, iterations = 80) {
+  if (nodes.length === 0) return nodes;
+  
+  // Create a copy to avoid mutating original
+  const updatedNodes = nodes.map(n => ({ ...n }));
+  
+  // Physics constants - tuned for more stable, realistic layout
+  const repulsionStrength = 1500; // Reduced for less aggressive repulsion
+  const springStrength = 0.008; // Slightly reduced for smoother settling
+  const springLength = Math.min(svgWidth, svgHeight) / 4; // Adaptive ideal distance based on viewport
+  const centerGravity = 0.0001; // Increased center pull to keep graph centered
+  const damping = 0.9; // Increased damping for more stability
+  const padding = Math.min(svgWidth, svgHeight) * 0.1; // Keep nodes within bounds
+  
+  const centerX = svgWidth / 2;
+  const centerY = svgHeight / 2;
+  
+  // Initialize velocities
+  const velocities = updatedNodes.map(() => ({ x: 0, y: 0 }));
+  
+  for (let iter = 0; iter < iterations; iter++) {
+    // Calculate forces for each node
+    const forces = updatedNodes.map(() => ({ x: 0, y: 0 }));
+    
+    // Repulsion: all nodes repel each other
+    for (let i = 0; i < updatedNodes.length; i++) {
+      for (let j = i + 1; j < updatedNodes.length; j++) {
+        const dx = updatedNodes[j].x - updatedNodes[i].x;
+        const dy = updatedNodes[j].y - updatedNodes[i].y;
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1; // Avoid division by zero
+        
+        // Coulomb's law: force = k / distance^2
+        const force = repulsionStrength / (distance * distance);
+        const fx = (dx / distance) * force;
+        const fy = (dy / distance) * force;
+        
+        forces[i].x -= fx;
+        forces[i].y -= fy;
+        forces[j].x += fx;
+        forces[j].y += fy;
+      }
+    }
+    
+    // Springs: connected nodes attract each other
+    for (const edge of edges) {
+      const source = updatedNodes[edge.source];
+      const target = updatedNodes[edge.target];
+      
+      if (!source || !target) continue;
+      
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+      
+      // Hooke's law: force = k * (distance - restLength)
+      const force = springStrength * (distance - springLength);
+      const fx = (dx / distance) * force;
+      const fy = (dy / distance) * force;
+      
+      forces[edge.source].x += fx;
+      forces[edge.source].y += fy;
+      forces[edge.target].x -= fx;
+      forces[edge.target].y -= fy;
+    }
+    
+    // Center gravity: weak pull toward center
+    for (let i = 0; i < updatedNodes.length; i++) {
+      const dx = centerX - updatedNodes[i].x;
+      const dy = centerY - updatedNodes[i].y;
+      
+      forces[i].x += dx * centerGravity;
+      forces[i].y += dy * centerGravity;
+    }
+    
+    // Update velocities and positions
+    for (let i = 0; i < updatedNodes.length; i++) {
+      // Apply damping
+      velocities[i].x = (velocities[i].x + forces[i].x) * damping;
+      velocities[i].y = (velocities[i].y + forces[i].y) * damping;
+      
+      // Update position
+      updatedNodes[i].x += velocities[i].x;
+      updatedNodes[i].y += velocities[i].y;
+      
+      // Keep nodes within bounds
+      updatedNodes[i].x = Math.max(padding, Math.min(svgWidth - padding, updatedNodes[i].x));
+      updatedNodes[i].y = Math.max(padding, Math.min(svgHeight - padding, updatedNodes[i].y));
+    }
+  }
+  
+  // After force-directed, center the graph by calculating centroid and translating
+  if (updatedNodes.length > 0) {
+    const xs = updatedNodes.map(n => n.x);
+    const ys = updatedNodes.map(n => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    
+    const centroidX = (minX + maxX) / 2;
+    const centroidY = (minY + maxY) / 2;
+    const offsetX = centerX - centroidX;
+    const offsetY = centerY - centroidY;
+    
+    // Translate all nodes to center
+    for (let i = 0; i < updatedNodes.length; i++) {
+      updatedNodes[i].x = Math.max(padding, Math.min(svgWidth - padding, updatedNodes[i].x + offsetX));
+      updatedNodes[i].y = Math.max(padding, Math.min(svgHeight - padding, updatedNodes[i].y + offsetY));
+    }
+  }
+  
+  return updatedNodes;
 }
 
 /**
@@ -334,13 +590,16 @@ export function isEdgeVisuallyPleasing(edge, edgeSet, nodeCount, algorithm) {
  * @param {Array} treeEdges - Spanning tree edges (for connectivity)
  * @param {Array} possibleEdges - All possible edges sorted by distance
  * @param {number} targetEdgeCount - Target number of edges
- * @param {Object} config - Configuration with minWeight, maxWeight, allowNegativeEdges
+ * @param {Object} config - Configuration with minWeight, maxWeight, allowNegativeEdges, useEuclideanWeights, viewportScale
  * @param {string} algorithm - Algorithm being used
  * @returns {Object} {edges: Array, edgeSet: Set} - Generated edges and edge tracking set
  */
 export function generateRandomEdges(nodes, treeEdges, possibleEdges, targetEdgeCount, config, algorithm) {
   const newEdges = [];
   const edgeSet = new Set();
+  const isDirected = config.isDirected !== false; // Default to true for backward compatibility
+  const useEuclideanWeights = config.useEuclideanWeights || false;
+  const viewportScale = config.viewportScale || { width: 800, height: 600 };
   
   const addEdge = (edge) => {
     // Skip if we've already added this exact edge
@@ -353,13 +612,20 @@ export function generateRandomEdges(nodes, treeEdges, possibleEdges, targetEdgeC
     const hasOppositeEdge = edgeSet.has(oppositeEdgeKey);
     
     // If we already have an edge in the opposite direction, 
-    // consider skipping this one to avoid bidirectional edges
-    if (hasOppositeEdge && Math.random() < EDGE_PREFERENCES.BIDIRECTIONAL_SKIP_CHANCE) {
+    // consider skipping this one to avoid bidirectional edges (only for directed graphs)
+    if (isDirected && hasOppositeEdge && Math.random() < EDGE_PREFERENCES.BIDIRECTIONAL_SKIP_CHANCE) {
       return;
     }
     
-    // Generate weight using extracted helper
-    const w = generateEdgeWeight(algorithm, config.minWeight, config.maxWeight, config.allowNegativeEdges);
+    // Generate weight: use Euclidean distance for spatial graphs, random for circular
+    let w;
+    if (useEuclideanWeights) {
+      const sourceNode = nodes[edge.source];
+      const targetNode = nodes[edge.target];
+      w = getEuclideanWeight(sourceNode, targetNode, viewportScale, config.minWeight, config.maxWeight);
+    } else {
+      w = generateEdgeWeight(algorithm, config.minWeight, config.maxWeight, config.allowNegativeEdges);
+    }
     
     // Add extra metadata for edges
     newEdges.push({
@@ -370,7 +636,8 @@ export function generateRandomEdges(nodes, treeEdges, possibleEdges, targetEdgeC
       status: 'unvisited',
       hasBidirectional: false,
       circleDistance: edge.circleDistance,
-      isNegative: w < 0
+      isNegative: w < 0,
+      isUndirected: !isDirected // Mark as undirected if graph is undirected
     });
   };
   

@@ -8,6 +8,7 @@ function FloatingNav({ children, className }) {
         'flex items-center gap-1 sm:gap-2 rounded-full bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200 dark:border-zinc-800 shadow-lg px-1 sm:px-2 py-1.5 sm:py-2 max-w-[calc(100vw-2rem)] overflow-x-auto scrollbar-hide',
         className
       )}
+      style={{ overflowY: 'visible' }}
     >
       {children}
     </nav>

@@ -59,8 +59,13 @@ function GraphRenderer({
   selectedDestNode,
   onNodeClick,
   onEdgeClick,
+  onWeightClick,
   algorithm = 'dijkstra',
-  hasNegativeCycle = false
+  hasNegativeCycle = false,
+  graphType = 'circular',
+  negativeCycleDetected = false,
+  isRunning = false,
+  isEditingEdge = false
 }) {
   // Use custom hook to detect mobile devices with proper resize handling
   const isMobile = useIsMobile();
@@ -151,8 +156,23 @@ function GraphRenderer({
 
       // Base color logic
       let color = styles.edgeColor;
-      let strokeWidth = isMobile ? 4 : 2;
+      // Undirected edges are slightly thicker for visual distinction
+      let strokeWidth = edge.isUndirected 
+        ? (isMobile ? 5 : 2.5)
+        : (isMobile ? 4 : 2);
       let strokeDasharray = "none";
+      let strokeOpacity = 0.9;
+      
+      // For circular graphs, scale visual weight (thickness/opacity) with edge weight
+      // This helps users understand that thicker/lighter edges = cheaper paths
+      if (graphType === 'circular' && edge.status === 'unvisited') {
+        // Normalize weight to 0-1 range (assuming weights 1-30 range)
+        const normalizedWeight = Math.min(1, Math.max(0, (edge.weight - 1) / 29));
+        // Invert: lower weight = thicker line (more prominent/cheaper)
+        const thicknessFactor = 1 - (normalizedWeight * 0.5); // 1.0 to 0.5 range
+        strokeWidth = strokeWidth * (0.7 + thicknessFactor * 0.3); // Scale between 0.7x and 1.0x
+        strokeOpacity = 0.6 + (1 - normalizedWeight) * 0.4; // 0.6 to 1.0 opacity
+      }
       
       // Handle negative edges with special styling for Bellman-Ford
       if (algorithm === 'bellmanford' && edge.isNegative) {
@@ -196,9 +216,8 @@ function GraphRenderer({
 
       // For Bellman-Ford, if there's a detected negative cycle, add warning styling
       const cycleWarningEffect = algorithm === 'bellmanford' && 
-                                hasNegativeCycle && 
-                                edge.inNegativeCycle &&
-                                (edge.status === 'negativecycle' || edge.status === 'unvisited');
+                                negativeCycleDetected && 
+                                (edge.status === 'negativecycle' || edge.inNegativeCycle);
 
       return (
         <g
@@ -215,6 +234,7 @@ function GraphRenderer({
           aria-label={`Edge from ${source.label} to ${target.label} with weight ${edge.weight}`}
           className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           data-tooltip={`${source.label} → ${target.label} (${edge.weight})`}
+          style={{ pointerEvents: 'visiblePainted' }}
         >
           {/* For Bellman-Ford, add a glow effect to negative edges (rendered first for layering) */}
           {algorithm === 'bellmanford' && edge.isNegative && (
@@ -231,6 +251,21 @@ function GraphRenderer({
             />
           )}
           
+          {/* Glow effect for negative cycle edges */}
+          {cycleWarningEffect && (
+            <path
+              d={bezierPath}
+              fill="none"
+              stroke={styles.negativeCycleColor}
+              strokeWidth={strokeWidth + 6}
+              strokeDasharray={strokeDasharray}
+              strokeLinecap="round"
+              strokeOpacity="0.4"
+              filter="url(#glow)"
+              className="animate-pulse"
+            />
+          )}
+          
           {/* Main curved path - Bezier curve */}
           <path
             d={bezierPath}
@@ -239,51 +274,67 @@ function GraphRenderer({
             strokeWidth={strokeWidth}
             strokeDasharray={strokeDasharray}
             strokeLinecap="round"
-            strokeOpacity="0.9"
+            strokeOpacity={strokeOpacity}
             className={`transition-all duration-300 ease-in-out ${
               cycleWarningEffect ? "animate-pulse" : ""
             }`}
+            style={{ pointerEvents: 'stroke' }}
           />
 
-          {/* Arrow head - positioned at end of curve with correct tangent angle */}
-          <polygon
-            points={`
-              ${targetX},${targetY}
-              ${targetX - arrowSize * Math.cos(endTangentAngle - arrowAngle)},${
-              targetY - arrowSize * Math.sin(endTangentAngle - arrowAngle)
-            }
-              ${targetX - arrowSize * Math.cos(endTangentAngle + arrowAngle)},${
-              targetY - arrowSize * Math.sin(endTangentAngle + arrowAngle)
-            }
-            `}
-            fill={color}
-          />
+          {/* Arrow head - positioned at end of curve with correct tangent angle (only for directed edges) */}
+          {!edge.isUndirected && (
+            <polygon
+              points={`
+                ${targetX},${targetY}
+                ${targetX - arrowSize * Math.cos(endTangentAngle - arrowAngle)},${
+                targetY - arrowSize * Math.sin(endTangentAngle - arrowAngle)
+              }
+                ${targetX - arrowSize * Math.cos(endTangentAngle + arrowAngle)},${
+                targetY - arrowSize * Math.sin(endTangentAngle + arrowAngle)
+              }
+              `}
+              fill={color}
+            />
+          )}
 
           {/* Weight label - with adjusted position to avoid overlaps */}
-          <rect
-            x={adjustedLabelX - (isMobile ? 15 : 12)}
-            y={adjustedLabelY - (isMobile ? 15 : 12)}
-            width={isMobile ? 30 : 24}
-            height={isMobile ? 30 : 24}
-            fill={edge.isNegative ? "#f0ecfe" : styles.weightLabelBg}
-            stroke={color}
-            strokeWidth="1.5"
-            rx="6"
-            filter="drop-shadow(0px 1px 2px rgba(0,0,0,0.1))"
-            opacity="0.95"
-            className={cycleWarningEffect ? "animate-pulse" : ""}
-          />
-          <text
-            x={adjustedLabelX}
-            y={adjustedLabelY}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontWeight="bold"
-            fontSize={isMobile ? "14" : "12"}
-            fill={edge.isNegative ? "#7e22ce" : "#333333"}
+          <g
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onWeightClick) {
+                onWeightClick(edge);
+              }
+            }}
+            className="weight-label-group cursor-pointer"
+            style={{ pointerEvents: 'bounding-box' }}
           >
-            {edge.weight}
-          </text>
+            <rect
+              x={adjustedLabelX - (isMobile ? 15 : 12)}
+              y={adjustedLabelY - (isMobile ? 15 : 12)}
+              width={isMobile ? 30 : 24}
+              height={isMobile ? 30 : 24}
+              fill={edge.isNegative ? "#f0ecfe" : styles.weightLabelBg}
+              stroke={color}
+              strokeWidth="1.5"
+              rx="6"
+              filter="drop-shadow(0px 1px 2px rgba(0,0,0,0.1))"
+              opacity="0.95"
+              className={`weight-label-bg transition-all duration-150 ${cycleWarningEffect ? "animate-pulse" : ""}`}
+            />
+            <text
+              x={adjustedLabelX}
+              y={adjustedLabelY}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontWeight="bold"
+              fontSize={isMobile ? "14" : "12"}
+              fill={edge.isNegative ? "#7e22ce" : "#333333"}
+              className="weight-label-text transition-all duration-150"
+              style={{ pointerEvents: 'none' }}
+            >
+              {edge.weight}
+            </text>
+          </g>
         </g>
       );
     });
@@ -312,8 +363,8 @@ function GraphRenderer({
         strokeWidth = isMobile ? 4 : 3;
       }
 
-      // Visited
-      if (visitedNodes.has(node.id)) {
+      // Visited - only animate if algorithm is still running
+      if (visitedNodes.has(node.id) && isRunning) {
         isAnimated = true;
       }
 
@@ -498,6 +549,50 @@ function GraphRenderer({
 
   return (
     <>
+      <defs>
+        {/* Glow filter for negative cycle edges */}
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        
+        {graphType === 'spatial' && (
+          <pattern
+            id="gridPattern"
+            x="0"
+            y="0"
+            width="50"
+            height="50"
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d="M 50 0 L 0 0 0 50"
+              fill="none"
+              stroke={isMobile ? 'rgba(0, 0, 0, 0.08)' : 'rgba(0, 0, 0, 0.1)'}
+              strokeWidth="1"
+              className="dark:hidden"
+            />
+            <path
+              d="M 50 0 L 0 0 0 50"
+              fill="none"
+              stroke={isMobile ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.1)'}
+              strokeWidth="1"
+              className="hidden dark:block"
+            />
+          </pattern>
+        )}
+      </defs>
+      {graphType === 'spatial' && (
+        <rect
+          width="100%"
+          height="100%"
+          fill="url(#gridPattern)"
+          className="pointer-events-none"
+        />
+      )}
       <g>{renderEdges()}</g>
       <g>{renderNodes()}</g>
       <g>{renderNegativeCycleIndicator()}</g>

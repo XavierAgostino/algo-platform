@@ -342,7 +342,10 @@ export function useAlgorithmRunner({
           setCurrentStep((prev) => prev + 1);
           animationFrameId.current = setTimeout(animate, animationSpeed);
         } else {
+          // Algorithm completed - clear animation states to stop blinking
           setIsRunning(false);
+          setCurrentRelaxingEdge(null);
+          setRecentlyUpdatedDistances([]);
         }
       };
       animationFrameId.current = setTimeout(animate, animationSpeed);

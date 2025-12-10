@@ -5,6 +5,37 @@
  */
 
 /**
+ * Get neighbors of a node, respecting directed/undirected graph structure
+ * 
+ * @param {number} nodeId - The node ID to get neighbors for
+ * @param {Array} edges - Array of edge objects
+ * @param {boolean} isDirected - Whether the graph is directed
+ * @returns {Array} Array of neighbor objects {nodeId, weight, edgeId}
+ */
+export function getNeighbors(nodeId, edges, isDirected) {
+  const neighbors = [];
+  for (const edge of edges) {
+    // Check outgoing edges (source -> target)
+    if (edge.source === nodeId) {
+      neighbors.push({ 
+        nodeId: edge.target, 
+        weight: edge.weight, 
+        edgeId: edge.id 
+      });
+    }
+    // For undirected graphs, also check incoming edges (target -> source)
+    if (!isDirected && edge.isUndirected && edge.target === nodeId) {
+      neighbors.push({ 
+        nodeId: edge.source, 
+        weight: edge.weight, 
+        edgeId: edge.id 
+      });
+    }
+  }
+  return neighbors;
+}
+
+/**
  * Get a unique key for a position (for collision detection)
  * Rounds to the nearest grid cell to create collision "cells"
  * 

@@ -2,6 +2,8 @@
  * Generate the step-by-step instructions (array of steps) for Bellman-Ford.
  * Return an array of step objects, and also set the final shortestPathResult in the parent.
  */
+import { getNeighbors } from './graphHelpers';
+
 export function generateBellmanFordSteps({
   nodes,
   edges,
@@ -41,6 +43,8 @@ export function generateBellmanFordSteps({
   });
 
   // Relax edges up to |V|-1 times
+  const isDirected = graphParams.isDirected !== false; // Default to true for backward compatibility
+  
   for (let i = 1; i < nodes.length; i++) {
     let relaxedAnyEdge = false;
     steps.push({
@@ -56,7 +60,22 @@ export function generateBellmanFordSteps({
       currentEdgeBeingRelaxed: null,
     });
 
+    // Collect all edges to relax (including reverse direction for undirected edges)
+    const edgesToRelax = [];
     for (const edge of edges) {
+      edgesToRelax.push({ ...edge, direction: 'forward' });
+      // For undirected edges, also add reverse direction
+      if (!isDirected && edge.isUndirected) {
+        edgesToRelax.push({
+          ...edge,
+          source: edge.target,
+          target: edge.source,
+          direction: 'reverse'
+        });
+      }
+    }
+
+    for (const edge of edgesToRelax) {
       const { source, target, weight, id } = edge;
       // If dist[source] is ∞, skip
       if (dist[source] === Infinity) {
@@ -157,7 +176,21 @@ export function generateBellmanFordSteps({
     currentEdgeBeingRelaxed: null,
   });
 
+  // Check all edges (including reverse for undirected)
+  const edgesToCheck = [];
   for (const edge of edges) {
+    edgesToCheck.push({ ...edge });
+    // For undirected edges, also check reverse direction
+    if (!isDirected && edge.isUndirected) {
+      edgesToCheck.push({
+        ...edge,
+        source: edge.target,
+        target: edge.source
+      });
+    }
+  }
+
+  for (const edge of edgesToCheck) {
     const { source, target, weight, id } = edge;
     if (dist[source] !== Infinity && dist[source] + weight < dist[target]) {
       hasNegativeCycle = true;

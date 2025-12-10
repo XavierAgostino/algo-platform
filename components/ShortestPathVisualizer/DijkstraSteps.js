@@ -2,6 +2,8 @@
  * Generate the step-by-step instructions (array of steps) for Dijkstra's algorithm.
  * Return an array of step objects, and also set the final shortestPathResult in the parent.
  */
+import { getNeighbors } from './graphHelpers';
+
 export function generateDijkstraSteps({
   nodes,
   edges,
@@ -93,10 +95,14 @@ export function generateDijkstraSteps({
       currentEdgeBeingRelaxed: null,
     });
 
-    // Outgoing edges
-    const outgoing = edges.filter((e) => e.source === currentId);
-    for (const edge of outgoing) {
-      const { target, weight, id } = edge;
+    // Get neighbors (respects directed/undirected graph structure)
+    const isDirected = graphParams.isDirected !== false; // Default to true for backward compatibility
+    const neighbors = getNeighbors(currentId, edges, isDirected);
+    for (const neighbor of neighbors) {
+      const { nodeId: target, weight, edgeId: id } = neighbor;
+      // Find the actual edge object for rendering purposes
+      const edge = edges.find(e => e.id === id);
+      
       // If negative weight, skip for Dijkstra
       if (weight < 0) {
         steps.push({

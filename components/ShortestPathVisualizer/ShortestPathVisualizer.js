@@ -6,6 +6,7 @@ import GraphRenderer from "./GraphRenderer";
 import { generateRandomGraph } from "./GraphGeneration";
 import AlgorithmVisualizer from "./AlgorithmVisualizer";
 import { useAlgorithmRunner } from "./hooks/useAlgorithmRunner";
+import { getEuclideanWeight } from "./graphGenerationHelpers";
 
 // Import mobile components
 import MobileControls from "./MobileControls";
@@ -36,6 +37,9 @@ const ShortestPathVisualizer = () => {
   const [edges, setEdges] = useState([]);
   const [showTutorial, setShowTutorial] = useState(false);
 
+  // Smart defaults: Dijkstra defaults to spatial, Bellman-Ford to circular
+  // Get initial algorithm from hook to set smart default
+  const initialAlgorithm = "dijkstra"; // Default algorithm
   const [graphParams, setGraphParams] = useState({
     nodeCount: 6,
     density: 0.5,
@@ -44,18 +48,26 @@ const ShortestPathVisualizer = () => {
     allowNegativeEdges: false,
     sourceNode: 0,
     hasNegativeCycle: false,
+    isDirected: true, // Default to directed for backward compatibility
+    graphType: initialAlgorithm === 'dijkstra' ? 'spatial' : 'circular', // Smart default based on algorithm
   });
 
   const [mode, setMode] = useState("auto"); // 'auto' or 'manual'
   const [animationSpeed, setAnimationSpeed] = useState(1000);
   const [showLegend, setShowLegend] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
+  // Store original container dimensions for responsive scaling
+  const [originalDimensions, setOriginalDimensions] = useState(null);
+  // Store graph bounds to maintain centering
+  const [graphBounds, setGraphBounds] = useState(null);
 
   // Manual mode enhancements
   const [isAddingNode, setIsAddingNode] = useState(false);
   const [isAddingEdge, setIsAddingEdge] = useState(false);
   const [isDeletingNode, setIsDeletingNode] = useState(false);
   const [isDeletingEdge, setIsDeletingEdge] = useState(false);
+  const [isEditingEdge, setIsEditingEdge] = useState(false);
   const [tempNode, setTempNode] = useState(null);
   const [selectedSourceNode, setSelectedSourceNode] = useState(null);
   const [selectedDestNode, setSelectedDestNode] = useState(null);
@@ -129,7 +141,13 @@ const ShortestPathVisualizer = () => {
     isOpen: false,
     position: { x: 0, y: 0 },
     pendingEdge: null, // { source, target }
+    mode: 'create', // 'create' or 'edit'
+    existingEdgeId: null, // For editing existing edges
+    currentWeight: 10, // Current weight value
   });
+
+  // Hint tooltip state
+  const [showEditHint, setShowEditHint] = useState(true);
 
   // Refs
   const svgRef = useRef(null);
@@ -308,6 +326,12 @@ const ShortestPathVisualizer = () => {
     setNodes(newNodes);
     setEdges(newEdges);
 
+    // Update original dimensions to current container size for proper resize handling
+    if (svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      setOriginalDimensions({ width: rect.width, height: rect.height });
+    }
+
     // Also update selected source/dest
     setSelectedSourceNode(newParams.sourceNode);
     setSelectedDestNode(null);
@@ -321,14 +345,32 @@ const ShortestPathVisualizer = () => {
     const newAlg = typeof e === "string" ? e : e.target.value;
     setAlgorithm(newAlg);
 
+    // Smart defaults: Set layout based on algorithm
+    // Dijkstra → Spatial (physical distance makes sense with positive weights)
+    // Bellman-Ford → Circular (negative weights don't make physical sense)
+    const smartLayout = newAlg === "dijkstra" ? "spatial" : "circular";
+    
+    // Update graph params with smart defaults
+    const updatedParams = { 
+      ...graphParams, 
+      graphType: smartLayout 
+    };
+
     // If switching to Dijkstra with negative edges, disable them
     if (newAlg === "dijkstra" && graphParams.allowNegativeEdges) {
-      setGraphParams({ ...graphParams, allowNegativeEdges: false });
+      updatedParams.allowNegativeEdges = false;
       setExplanation(
-        "Switched to Dijkstra. Negative edges disabled as Dijkstra's doesn't support them."
+        "Switched to Dijkstra. Negative edges disabled. Layout set to Spatial (physical distance)."
+      );
+    } else {
+      setExplanation(
+        newAlg === "dijkstra"
+          ? "Switched to Dijkstra. Layout set to Spatial (weights match physical distance)."
+          : "Switched to Bellman-Ford. Layout set to Circular (supports negative weights)."
       );
     }
 
+    setGraphParams(updatedParams);
     resetGraph();
   };
 
@@ -451,12 +493,31 @@ const ShortestPathVisualizer = () => {
   // =========================
   const handleParamChange = (e) => {
     const { name, value, type, checked } = e.target;
-    const newValue = type === "checkbox" ? checked : parseFloat(value);
+    let newValue;
+    
+    // Handle different input types
+    if (type === "checkbox") {
+      newValue = checked;
+    } else if (type === "select-one" && (name === "graphType")) {
+      // Handle string values for select dropdowns
+      newValue = value;
+    } else {
+      newValue = parseFloat(value);
+    }
 
     // If toggling negative edges in Dijkstra
     if (name === "allowNegativeEdges" && newValue && algorithm === "dijkstra") {
       setExplanation(
         "Warning: Dijkstra doesn't support negative edges. Switch to Bellman-Ford."
+      );
+    }
+
+    // If changing graph type, provide helpful explanation
+    if (name === "graphType") {
+      setExplanation(
+        newValue === "spatial"
+          ? "Spatial graph: edge weights represent actual distance"
+          : "Circular graph: edge weights are randomly assigned"
       );
     }
 
@@ -507,6 +568,17 @@ const ShortestPathVisualizer = () => {
     setIsAddingNode(false);
     setIsAddingEdge(false);
     setIsDeletingNode(false);
+    setIsEditingEdge(false);
+    setIsSelectingSource(false);
+    setIsSelectingDest(false);
+    setTempNode(null);
+  };
+  const handleEditEdgeMode = () => {
+    setIsEditingEdge(!isEditingEdge);
+    setIsAddingNode(false);
+    setIsAddingEdge(false);
+    setIsDeletingNode(false);
+    setIsDeletingEdge(false);
     setIsSelectingSource(false);
     setIsSelectingDest(false);
     setTempNode(null);
@@ -536,6 +608,7 @@ const ShortestPathVisualizer = () => {
     setIsAddingEdge(false);
     setIsDeletingNode(false);
     setIsDeletingEdge(false);
+    setIsEditingEdge(false);
     setIsSelectingSource(false);
     setIsSelectingDest(false);
     setTempNode(null);
@@ -567,7 +640,14 @@ const ShortestPathVisualizer = () => {
 
   // When a node is clicked
   const handleNodeClick = (nodeId) => {
-    if (mode !== "manual") return;
+    // In manual mode, allow all operations
+    if (mode !== "manual" && mode !== "auto") return;
+
+    // In auto mode, only allow source/target selection if in selection mode
+    if (mode === "auto" && !isSelectingSource && !isSelectingDest) {
+      // Don't block - just do nothing silently
+      return;
+    }
 
     // Selecting source
     if (isSelectingSource) {
@@ -654,19 +734,55 @@ const ShortestPathVisualizer = () => {
   // Handle weight confirmation from popover
   const handleWeightConfirm = (weight) => {
     const { source, target } = weightPopover.pendingEdge || {};
+    const isEditMode = weightPopover.mode === 'edit';
     
-    if (source !== undefined && target !== undefined) {
-      let validWeight = true;
-      let errorMsg = "";
+    // Validate weight
+    let validWeight = true;
+    let errorMsg = "";
 
-      if (algorithm === "dijkstra" && weight < 0) {
-        validWeight = false;
-        errorMsg = "Dijkstra doesn't support negative edges.";
+    if (algorithm === "dijkstra" && weight < 0) {
+      validWeight = false;
+      errorMsg = "Dijkstra doesn't support negative edges.";
+    }
+
+    if (!validWeight) {
+      setExplanation(errorMsg);
+      setWeightPopover({ ...weightPopover, isOpen: false });
+      return;
+    }
+
+    if (isEditMode) {
+      // Edit existing edge weight
+      const edgeId = weightPopover.existingEdgeId;
+      setEdges(prevEdges =>
+        prevEdges.map(edge =>
+          edge.id === edgeId
+            ? { ...edge, weight, isNegative: weight < 0, status: "unvisited" }
+            : { ...edge, status: "unvisited" }
+        )
+      );
+
+      // Reset algorithm state since graph was modified
+      reset();
+
+      // If we're in view mode, switch back to explore mode
+      if (visualizationMode === "view") {
+        setVisualizationMode("explore");
+        setShowAnswer(false);
       }
 
-      if (validWeight) {
+      setExplanation(
+        graphParams.graphType === 'spatial'
+          ? "⚠️ Edge weight edited. Note: This breaks the spatial distance invariant. Algorithm state reset."
+          : "Edge weight updated. Algorithm state reset."
+      );
+    } else {
+      // Create new edge
+      if (source !== undefined && target !== undefined) {
         const edgeId = `${source}-${target}`;
         if (!edges.some((e) => e.id === edgeId)) {
+          // Respect the isDirected setting when manually adding edges
+          const isDirected = graphParams.isDirected !== false;
           setEdges([
             ...edges,
             {
@@ -675,53 +791,234 @@ const ShortestPathVisualizer = () => {
               target,
               weight,
               status: "unvisited",
+              isUndirected: !isDirected, // Mark as undirected if graph is undirected
             },
           ]);
         }
-      } else {
-        setExplanation(errorMsg);
       }
     }
 
     // Reset states
-    setWeightPopover({ isOpen: false, position: { x: 0, y: 0 }, pendingEdge: null });
+    setWeightPopover({ 
+      isOpen: false, 
+      position: { x: 0, y: 0 }, 
+      pendingEdge: null,
+      mode: 'create',
+      existingEdgeId: null,
+      currentWeight: 10,
+    });
     setTempNode(null);
     setIsAddingEdge(false);
+    setIsEditingEdge(false);
   };
 
   // Handle weight cancel from popover
   const handleWeightCancel = () => {
-    setWeightPopover({ isOpen: false, position: { x: 0, y: 0 }, pendingEdge: null });
+    setWeightPopover({ 
+      isOpen: false, 
+      position: { x: 0, y: 0 }, 
+      pendingEdge: null,
+      mode: 'create',
+      existingEdgeId: null,
+      currentWeight: 10,
+    });
     setTempNode(null);
     setIsAddingEdge(false);
+    setIsEditingEdge(false);
   };
 
   // When an edge is clicked
   const handleEdgeClick = (edgeId) => {
-    if (!isDeletingEdge) return;
-    const filtered = edges.filter((e) => e.id !== edgeId);
-    setEdges(filtered);
-    setIsDeletingEdge(false);
+    if (isDeletingEdge) {
+      const filtered = edges.filter((e) => e.id !== edgeId);
+      setEdges(filtered);
+      setIsDeletingEdge(false);
+    }
+  };
+
+  // When an edge weight is clicked (for editing)
+  const handleWeightClick = (edge) => {
+    // In manual mode, require edit mode to be active
+    // In auto mode, always allow editing (no restrictions)
+    if (mode === "manual" && !isEditingEdge) return;
+
+    // Don't allow editing while algorithm is running
+    if (isRunning) return;
+
+    // The edge object from GraphRenderer has source/target as full objects, not IDs
+    // Extract the actual node objects
+    const sourceNode = edge.source;
+    const targetNode = edge.target;
+
+    if (!sourceNode || !targetNode) return;
+
+    const midX = (sourceNode.x + targetNode.x) / 2;
+    const midY = (sourceNode.y + targetNode.y) / 2;
+
+    // Convert SVG coordinates to screen coordinates, accounting for transform
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    const screenX = svgRect ? svgRect.left + midX * graphTransform.scale + graphTransform.x : midX;
+    const screenY = svgRect ? svgRect.top + midY * graphTransform.scale + graphTransform.y : midY;
+
+    // Extract the source/target IDs from the edge.id (format: "sourceId-targetId")
+    const [sourceId, targetId] = edge.id.split('-').map(Number);
+
+    setWeightPopover({
+      isOpen: true,
+      position: { x: screenX, y: screenY },
+      pendingEdge: { source: sourceId, target: targetId },
+      mode: 'edit',
+      existingEdgeId: edge.id,
+      currentWeight: edge.weight,
+    });
   };
 
   // =========================
   //   INIT & RESIZE
   // =========================
   useEffect(() => {
-    // Generate a random graph on first load
+    // Generate a random graph on first load only
     handleGenerateRandomGraph();
+    // Capture initial container dimensions
+    if (svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      setOriginalDimensions({ width: rect.width, height: rect.height });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Calculate graph bounds (centroid and extent) when nodes change
   useEffect(() => {
-    // Re-generate on window resize if in auto mode
+    if (nodes.length === 0) {
+      setGraphBounds(null);
+      return;
+    }
+
+    // Calculate bounding box and centroid
+    const xs = nodes.map(n => n.x);
+    const ys = nodes.map(n => n.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    
+    const centroidX = (minX + maxX) / 2;
+    const centroidY = (minY + maxY) / 2;
+    const width = maxX - minX || 1; // Avoid division by zero
+    const height = maxY - minY || 1;
+
+    setGraphBounds({
+      centroidX,
+      centroidY,
+      width,
+      height,
+      minX,
+      minY,
+      maxX,
+      maxY
+    });
+  }, [nodes]);
+
+  // Handle resize and orientation changes while maintaining graph centering
+  useEffect(() => {
+    if (!originalDimensions || !graphBounds || nodes.length === 0) return;
+
+    let resizeTimeout;
     const handleResize = () => {
-      if (mode === "auto") handleGenerateRandomGraph();
+      // Debounce resize events
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        if (!svgRef.current) return;
+        
+        const rect = svgRef.current.getBoundingClientRect();
+        const newWidth = rect.width;
+        const newHeight = rect.height;
+        
+        // Calculate scale factors
+        const scaleX = newWidth / originalDimensions.width;
+        const scaleY = newHeight / originalDimensions.height;
+        
+        // Only proceed if dimensions changed significantly and scale is reasonable
+        if ((Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01) && 
+            scaleX > 0.3 && scaleX < 3 && scaleY > 0.3 && scaleY < 3) {
+          
+          // Calculate new center point (should remain at center of viewport)
+          const newCenterX = newWidth / 2;
+          const newCenterY = newHeight / 2;
+          
+          // Calculate offset needed to keep graph centered
+          // Scale nodes relative to their centroid, then translate to new center
+          setNodes(prevNodes => {
+            // Calculate current centroid from prevNodes (ensures we use latest state)
+            if (prevNodes.length === 0) return prevNodes;
+            
+            const xs = prevNodes.map(n => n.x);
+            const ys = prevNodes.map(n => n.y);
+            const currentCentroidX = (Math.min(...xs) + Math.max(...xs)) / 2;
+            const currentCentroidY = (Math.min(...ys) + Math.max(...ys)) / 2;
+            
+            const updatedNodes = prevNodes.map(node => {
+              // Calculate offset from current centroid
+              const offsetX = node.x - currentCentroidX;
+              const offsetY = node.y - currentCentroidY;
+              
+              // Scale the offset
+              const scaledOffsetX = offsetX * scaleX;
+              const scaledOffsetY = offsetY * scaleY;
+              
+              // Position relative to new center
+              return {
+                ...node,
+                x: newCenterX + scaledOffsetX,
+                y: newCenterY + scaledOffsetY
+              };
+            });
+            
+            // For spatial graphs, recalculate edge weights based on new node positions
+            const isSpatial = graphParams.graphType === 'spatial';
+            if (isSpatial && edges.length > 0) {
+              // Use the updated nodes directly to recalculate weights
+              setEdges(prevEdges => {
+                return prevEdges.map(edge => {
+                  const sourceNode = updatedNodes.find(n => n.id === edge.source);
+                  const targetNode = updatedNodes.find(n => n.id === edge.target);
+                  
+                  if (sourceNode && targetNode) {
+                    // Recalculate weight based on new positions, respecting user's weight range
+                    const newWeight = getEuclideanWeight(
+                      sourceNode,
+                      targetNode,
+                      { width: newWidth, height: newHeight },
+                      graphParams.minWeight,
+                      graphParams.maxWeight
+                    );
+                    return { ...edge, weight: newWeight };
+                  }
+                  return edge;
+                });
+              });
+            }
+            
+            return updatedNodes;
+          });
+          
+          // Update baseline dimensions for next resize
+          setOriginalDimensions({ width: newWidth, height: newHeight });
+        }
+      }, 150); // 150ms debounce
     };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+
+    // Listen for resize events
+    window.addEventListener('resize', handleResize);
+    // Listen for orientation changes (mobile)
+    window.addEventListener('orientationchange', handleResize);
+    
+    return () => {
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, [originalDimensions, graphBounds, nodes.length, graphParams.graphType, edges.length]);
 
   // =========================
   //   KEYBOARD SHORTCUTS
@@ -745,7 +1042,7 @@ const ShortestPathVisualizer = () => {
   return (
     <div className="flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950">
       {/* FLOATING NAVBAR */}
-      <div className="fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)]">
+      <div className="fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)] overflow-visible">
         <FloatingNav>
           {/* Home Button */}
           <Link href="/" className="flex items-center justify-center rounded-full p-1.5 sm:p-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 transition-all duration-200 flex-shrink-0" title="Back to Dashboard">
@@ -781,6 +1078,45 @@ const ShortestPathVisualizer = () => {
               </TabsTrigger>
             </TabsList>
           </Tabs>
+
+          <FloatingNavDivider />
+
+          {/* Visualization Mode Toggle (Desktop) */}
+          {!isMobile && (
+            <>
+              <FloatingNavDivider />
+              <div className="relative flex-shrink-0">
+                <Tabs value={visualizationMode} onValueChange={(value) => {
+                  if (value === "explore" && visualizationMode === "view") {
+                    toggleVisualizationMode();
+                  } else if (value === "view" && visualizationMode === "explore") {
+                    toggleVisualizationMode();
+                  }
+                }}>
+                  <TabsList className="h-8 sm:h-9 bg-zinc-100 dark:bg-zinc-800 rounded-full">
+                    <div className="relative group inline-block">
+                      <TabsTrigger 
+                        value="explore" 
+                        className="text-[10px] sm:text-xs px-2 sm:px-3 rounded-full data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+                        title="Step through the algorithm step-by-step"
+                      >
+                        Explore
+                      </TabsTrigger>
+                    </div>
+                    <div className="relative group inline-block ml-0.5">
+                      <TabsTrigger 
+                        value="view" 
+                        className="text-[10px] sm:text-xs px-2 sm:px-3 rounded-full data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-sm"
+                        title="See final shortest paths instantly"
+                      >
+                        View
+                      </TabsTrigger>
+                    </div>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </>
+          )}
 
           <FloatingNavDivider />
 
@@ -874,17 +1210,63 @@ const ShortestPathVisualizer = () => {
                     selectedDestNode={selectedDestNode}
                     onNodeClick={handleNodeClick}
                     onEdgeClick={handleEdgeClick}
+                    onWeightClick={handleWeightClick}
+                    graphType={graphParams.graphType || 'circular'}
+                    negativeCycleDetected={negativeCycleDetected}
+                    isRunning={isRunning}
+                    isEditingEdge={isEditingEdge}
                   />
                 </g>
               </svg>
 
               {/* Mobile pinch/zoom indicator */}
               {isMobile && (
-                <div className="absolute top-3 right-3 z-10 bg-white/70 backdrop-blur-sm rounded-full px-2 py-1 text-xs text-gray-700 shadow-sm">
+                <div className="absolute top-3 right-3 z-10 bg-white/70 dark:bg-zinc-800/70 backdrop-blur-sm rounded-full px-2 py-1 text-xs text-gray-700 dark:text-gray-300 shadow-sm">
                   {Math.round(graphTransform.scale * 100)}%
                 </div>
               )}
 
+              {/* Interactive Hints - Auto Mode - Desktop only, dismissible */}
+              {!isMobile && mode === "auto" && edges.length > 0 && !isRunning && steps.length === 0 && !isSelectingSource && !isSelectingDest && showEditHint && (
+                <div className="absolute top-3 right-3 z-20 bg-indigo-500/90 backdrop-blur-sm text-white px-3 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 max-w-xs group">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>💡 Click edge weights to edit them!</span>
+                  <button
+                    onClick={() => setShowEditHint(false)}
+                    className="ml-1 opacity-70 hover:opacity-100 transition-opacity"
+                    aria-label="Dismiss hint"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {/* Selection Mode Hint */}
+              {mode === "auto" && (isSelectingSource || isSelectingDest) && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-emerald-500/90 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 animate-pulse">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                  </svg>
+                  <span>{isSelectingSource ? "Click a node to set as SOURCE" : "Click a node to set as TARGET"}</span>
+                </div>
+              )}
+
+              {/* Negative Cycle Toast Banner */}
+              {negativeCycleDetected && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-500 text-white px-4 sm:px-6 py-3 rounded-lg shadow-xl border-2 border-rose-600 animate-pulse flex items-center gap-3 max-w-[90%] sm:max-w-md">
+                  <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-bold text-sm">!</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">Negative Cycle Detected</div>
+                    <div className="text-xs opacity-90">No shortest paths exist. The algorithm cannot find a solution.</div>
+                  </div>
+                </div>
+              )}
 
               {/* Tutorial Dialog */}
               <Dialog open={showTutorial} onOpenChange={setShowTutorial}>
@@ -989,35 +1371,59 @@ const ShortestPathVisualizer = () => {
                 currentAlgorithmStep={currentAlgorithmStep}
               />
 
-              {/* Visualization Mode Toggle Button */}
-              <div className="absolute bottom-3 right-3 z-10">
-                <button
-                  onClick={toggleVisualizationMode}
-                  className={`group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium shadow-sm backdrop-blur-sm transition-all hover:shadow-md cursor-pointer ${
-                    visualizationMode === "explore"
-                      ? "bg-indigo-100/90 text-indigo-700 border border-indigo-200 hover:bg-indigo-200/90"
-                      : "bg-amber-100/90 text-amber-700 border border-amber-200 hover:bg-amber-200/90"
-                  }`}
-                  title={visualizationMode === "explore" 
-                    ? "Click to switch to View Mode (see final answer)" 
-                    : "Click to switch to Explore Mode (step through algorithm)"}
-                >
-                  {visualizationMode === "explore" ? (
-                    <>
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Explore Mode</span>
-                      <span className="text-[10px] opacity-60 group-hover:opacity-100">→ View</span>
-                    </>
-                  ) : (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5" />
-                      <span>View Mode</span>
-                      <span className="text-[10px] opacity-60 group-hover:opacity-100">→ Explore</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              {/* Negative Cycle Toast Banner */}
+              {negativeCycleDetected && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-500 text-white px-6 py-3 rounded-lg shadow-xl border-2 border-rose-600 animate-pulse flex items-center gap-3 max-w-md">
+                  <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-bold text-sm">!</span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-bold text-sm">Negative Cycle Detected</div>
+                    <div className="text-xs opacity-90">No shortest paths exist. The algorithm cannot find a solution.</div>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* AUTO MODE TOOLBAR - Simple controls for source/dest selection */}
+            {mode === "auto" && !isMobile && (
+              <div className="bg-gradient-to-r from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-800 border-t border-zinc-200 dark:border-zinc-700 px-4 py-3">
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={handleSelectSourceMode}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                      isSelectingSource
+                        ? "bg-emerald-500 text-white shadow-md"
+                        : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                    }`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                    {isSelectingSource ? "Click a node..." : "Set Source"}
+                  </button>
+
+                  <button
+                    onClick={handleSelectDestMode}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                      isSelectingDest
+                        ? "bg-orange-500 text-white shadow-md"
+                        : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600 hover:bg-orange-50 dark:hover:bg-orange-950/20"
+                    }`}
+                  >
+                    <div className="w-3 h-3 rounded-full bg-orange-500" />
+                    {isSelectingDest ? "Click a node..." : "Set Target"}
+                  </button>
+
+                  {(isSelectingSource || isSelectingDest) && (
+                    <button
+                      onClick={handleCancelOperation}
+                      className="px-3 py-2 rounded-lg text-sm font-medium bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* MANUAL MODE TOOLBAR - Desktop only, when in manual mode */}
             {mode === "manual" && !isMobile && (
@@ -1026,6 +1432,7 @@ const ShortestPathVisualizer = () => {
                 isAddingEdge={isAddingEdge}
                 isDeletingNode={isDeletingNode}
                 isDeletingEdge={isDeletingEdge}
+                isEditingEdge={isEditingEdge}
                 isSelectingSource={isSelectingSource}
                 isSelectingDest={isSelectingDest}
                 tempNode={tempNode}
@@ -1033,6 +1440,7 @@ const ShortestPathVisualizer = () => {
                 onAddEdgeMode={handleAddEdgeMode}
                 onDeleteNodeMode={handleDeleteNodeMode}
                 onDeleteEdgeMode={handleDeleteEdgeMode}
+                onEditEdgeMode={handleEditEdgeMode}
                 onSelectSourceMode={handleSelectSourceMode}
                 onSelectDestMode={handleSelectDestMode}
                 onClearGraph={clearGraph}
@@ -1311,6 +1719,8 @@ const ShortestPathVisualizer = () => {
                 resetGraphTransform={resetGraphTransform}
                 explanation={explanation}
                 steps={steps}
+                visualizationMode={visualizationMode}
+                toggleVisualizationMode={toggleVisualizationMode}
               />
             )}
           </div>
@@ -1327,20 +1737,119 @@ const ShortestPathVisualizer = () => {
           </DrawerHeader>
           
           <div className="px-4 pb-4 overflow-y-auto">
-            {/* Mode */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
-                Mode
-              </label>
-              <select
-                value={mode}
-                onChange={handleModeChange}
-                className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 p-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-              >
-                <option value="auto">Auto-Generate</option>
-                <option value="manual">Manual Design</option>
-              </select>
+            {/* Graph Structure Group */}
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Graph Structure</h3>
+              
+              {/* Mode */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                  Mode
+                </label>
+                <select
+                  value={mode}
+                  onChange={handleModeChange}
+                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 p-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                >
+                  <option value="auto">Auto-Generate</option>
+                  <option value="manual">Manual Design</option>
+                </select>
+              </div>
+
+              {/* Layout Type */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                  Layout
+                </label>
+                <select
+                  name="graphType"
+                  value={graphParams.graphType || 'circular'}
+                  onChange={handleParamChange}
+                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-700 p-2 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
+                >
+                  <option value="circular">Circular</option>
+                  <option value="spatial">Spatial</option>
+                </select>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                  {graphParams.graphType === 'spatial' 
+                    ? "Spatial: weights match distance (like a map)" 
+                    : "Circular: weights are randomly assigned"}
+                </p>
+                {algorithm === "dijkstra" && graphParams.graphType === "circular" && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 italic">
+                    💡 Tip: Spatial layout works best with Dijkstra (positive weights)
+                  </p>
+                )}
+                {algorithm === "bellmanford" && graphParams.graphType === "spatial" && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 italic">
+                    💡 Tip: Circular layout works better with Bellman-Ford (supports negative weights)
+                  </p>
+                )}
+              </div>
+
+              {/* Directed/Undirected Toggle */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Graph Type
+                    </label>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      {graphParams.isDirected !== false 
+                        ? "Directed: edges have direction (one-way)" 
+                        : "Undirected: edges can be traversed both ways"}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={graphParams.isDirected !== false}
+                    onCheckedChange={(checked) => {
+                      setGraphParams({ ...graphParams, isDirected: checked });
+                      setExplanation(
+                        checked 
+                          ? "Switched to directed graph. Edges have direction."
+                          : "Switched to undirected graph. Edges can be traversed both ways."
+                      );
+                    }}
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* Auto Mode Quick Actions */}
+            {mode === "auto" && (
+              <div className="bg-indigo-50 dark:bg-indigo-950/50 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800 mb-4">
+                <p className="font-medium text-indigo-800 dark:text-indigo-400 mb-2 text-sm">
+                  Graph Controls:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => { handleSelectSourceMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm flex items-center gap-2 ${
+                      isSelectingSource
+                        ? "bg-emerald-500 text-white"
+                        : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600"
+                    }`}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    {isSelectingSource ? "Click Node..." : "Set Source"}
+                  </button>
+                  <button
+                    onClick={() => { handleSelectDestMode(); setIsDrawerOpen(false); }}
+                    className={`px-3 py-1.5 rounded text-sm flex items-center gap-2 ${
+                      isSelectingDest
+                        ? "bg-orange-500 text-white"
+                        : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600"
+                    }`}
+                  >
+                    <div className="w-2 h-2 rounded-full bg-orange-500" />
+                    {isSelectingDest ? "Click Node..." : "Set Target"}
+                  </button>
+                </div>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
+                  💡 Click edge weights directly on the graph to edit them
+                </p>
+              </div>
+            )}
 
             {/* Manual Mode Toolbar */}
             {mode === "manual" && (
@@ -1428,8 +1937,12 @@ const ShortestPathVisualizer = () => {
             {/* Auto Mode Controls */}
             {mode === "auto" && (
               <>
-                {/* Number of Nodes */}
+                {/* Graph Parameters Group */}
                 <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Graph Parameters</h3>
+                  
+                  {/* Number of Nodes */}
+                  <div className="mb-6">
                   <div className="flex justify-between items-center mb-2">
                     <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                       Number of Nodes
@@ -1516,27 +2029,34 @@ const ShortestPathVisualizer = () => {
                   </div>
                 </div>
 
-                {/* Negative Edges (only for Bellman-Ford) */}
-                {algorithm === "bellmanford" && (
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                          Allow Negative Edges
-                        </label>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                          {graphParams.allowNegativeEdges
-                            ? "May generate negative cycles"
-                            : "All edge weights will be positive"}
-                        </p>
+                </div>
+
+                {/* Algorithm Settings Group */}
+                <div className="mb-6">
+                  <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 mb-3">Algorithm Settings</h3>
+                  
+                  {/* Negative Edges (only for Bellman-Ford) */}
+                  {algorithm === "bellmanford" && (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                            Allow Negative Edges
+                          </label>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                            {graphParams.allowNegativeEdges
+                              ? "May generate negative cycles"
+                              : "All edge weights will be positive"}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={graphParams.allowNegativeEdges}
+                          onCheckedChange={(checked) => setGraphParams({ ...graphParams, allowNegativeEdges: checked })}
+                        />
                       </div>
-                      <Switch
-                        checked={graphParams.allowNegativeEdges}
-                        onCheckedChange={(checked) => setGraphParams({ ...graphParams, allowNegativeEdges: checked })}
-                      />
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {/* Generate New Graph */}
                 <button
@@ -1585,11 +2105,11 @@ const ShortestPathVisualizer = () => {
         </DrawerContent>
       </Drawer>
 
-      {/* Weight Input Popover for Edge Creation */}
+      {/* Weight Input Popover for Edge Creation/Editing */}
       <WeightInputPopover
         isOpen={weightPopover.isOpen}
         position={weightPopover.position}
-        initialWeight={10}
+        initialWeight={weightPopover.currentWeight}
         allowNegative={algorithm === "bellmanford" && graphParams.allowNegativeEdges}
         onConfirm={handleWeightConfirm}
         onCancel={handleWeightCancel}

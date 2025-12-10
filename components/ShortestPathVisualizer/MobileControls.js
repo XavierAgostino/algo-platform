@@ -1,5 +1,6 @@
 import React from "react";
-import { Play, Pause, SkipForward, RotateCcw, Focus } from "lucide-react";
+import { Play, Pause, SkipForward, RotateCcw, Focus, Eye, EyeOff } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const MobileControls = ({
   currentStep, 
@@ -10,10 +11,40 @@ const MobileControls = ({
   resetGraph,
   resetGraphTransform,
   explanation,
-  steps
+  steps,
+  visualizationMode,
+  toggleVisualizationMode
 }) => {
   return (
     <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 p-4">
+      {/* Visualization Mode Toggle */}
+      <div className="mb-4 flex justify-center">
+        <Tabs value={visualizationMode} onValueChange={(value) => {
+          if (value === "explore" && visualizationMode === "view") {
+            toggleVisualizationMode();
+          } else if (value === "view" && visualizationMode === "explore") {
+            toggleVisualizationMode();
+          }
+        }} className="w-full max-w-xs">
+          <TabsList className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+            <TabsTrigger 
+              value="explore" 
+              className="flex-1 data-[state=active]:bg-indigo-600 data-[state=active]:text-white flex items-center gap-1.5"
+            >
+              <Eye className="w-4 h-4" />
+              Explore
+            </TabsTrigger>
+            <TabsTrigger 
+              value="view" 
+              className="flex-1 data-[state=active]:bg-amber-600 data-[state=active]:text-white flex items-center gap-1.5"
+            >
+              <EyeOff className="w-4 h-4" />
+              View
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
       {/* Progress Indicator */}
       {steps && steps.length > 0 && (
         <div className="flex items-center justify-center gap-2 mb-4">

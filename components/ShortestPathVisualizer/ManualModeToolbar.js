@@ -7,7 +7,8 @@ import {
   Flag, 
   Target, 
   Eraser,
-  MousePointer2
+  MousePointer2,
+  Edit3
 } from "lucide-react";
 
 /**
@@ -20,6 +21,7 @@ const ManualModeToolbar = ({
   isAddingEdge,
   isDeletingNode,
   isDeletingEdge,
+  isEditingEdge,
   isSelectingSource,
   isSelectingDest,
   tempNode, // For edge creation - shows which node is selected
@@ -29,6 +31,7 @@ const ManualModeToolbar = ({
   onAddEdgeMode,
   onDeleteNodeMode,
   onDeleteEdgeMode,
+  onEditEdgeMode,
   onSelectSourceMode,
   onSelectDestMode,
   onClearGraph,
@@ -46,6 +49,7 @@ const ManualModeToolbar = ({
     if (isAddingEdge && tempNode !== null) return `Click second node (from ${nodes[tempNode]?.label})`;
     if (isDeletingNode) return "Click node to delete";
     if (isDeletingEdge) return "Click edge to delete";
+    if (isEditingEdge) return "Click edge weight to edit";
     if (isSelectingSource) return "Click node to set as source";
     if (isSelectingDest) return "Click node to set as target";
     return null;
@@ -146,6 +150,13 @@ const ManualModeToolbar = ({
             isActive={isDeletingEdge}
             onClick={onDeleteEdgeMode}
             variant="danger"
+          />
+          <ToolButton
+            icon={Edit3}
+            label="Edit Edge"
+            isActive={isEditingEdge}
+            onClick={onEditEdgeMode}
+            variant="default"
           />
         </div>
         
