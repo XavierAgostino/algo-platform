@@ -4,12 +4,8 @@ import _ from "lodash";
 
 import GraphRenderer from "./GraphRenderer";
 import { generateRandomGraph } from "./GraphGeneration";
-import { generateDijkstraSteps } from "./DijkstraSteps";
-import { generateBellmanFordSteps } from "./BellmanFordSteps";
 import AlgorithmVisualizer from "./AlgorithmVisualizer";
-// Custom hook available for algorithm runner logic (useAlgorithmRunner)
-// Can be used to further separate concerns in future refactoring
-// import { useAlgorithmRunner } from "./hooks/useAlgorithmRunner";
+import { useAlgorithmRunner } from "./hooks/useAlgorithmRunner";
 
 // Import mobile components
 import MobileControls from "./MobileControls";
@@ -34,23 +30,11 @@ import Link from "next/link";
 
 const ShortestPathVisualizer = () => {
   // =========================
-  //       STATE
+  //       GRAPH STATE (Component-managed)
   // =========================
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
-
-  const [algorithm, setAlgorithm] = useState("dijkstra");
-  const [isRunning, setIsRunning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [steps, setSteps] = useState([]);
-  const [showAnswer, setShowAnswer] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [currentRelaxingEdge, setCurrentRelaxingEdge] = useState(null);
-  const [recentlyUpdatedDistances, setRecentlyUpdatedDistances] = useState([]);
-
-  // Track confirmed shortest path edges
-  const [confirmedPathEdges, setConfirmedPathEdges] = useState(new Set());
 
   const [graphParams, setGraphParams] = useState({
     nodeCount: 6,
@@ -63,22 +47,9 @@ const ShortestPathVisualizer = () => {
   });
 
   const [mode, setMode] = useState("auto"); // 'auto' or 'manual'
-  const [explanation, setExplanation] = useState("");
-  const [shortestPathResult, setShortestPathResult] = useState({
-    distances: {},
-    paths: {},
-  });
   const [animationSpeed, setAnimationSpeed] = useState(1000);
   const [showLegend, setShowLegend] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
-  // Algorithm-specific data structures
-  const [distanceArray, setDistanceArray] = useState({});
-  const [visitedNodes, setVisitedNodes] = useState(new Set());
-  const [minHeap, setMinHeap] = useState([]);
-  const [iterationCount, setIterationCount] = useState(0);
-  const [negativeCycleDetected, setNegativeCycleDetected] = useState(false);
-  const [currentAlgorithmStep, setCurrentAlgorithmStep] = useState("");
 
   // Manual mode enhancements
   const [isAddingNode, setIsAddingNode] = useState(false);
@@ -91,8 +62,57 @@ const ShortestPathVisualizer = () => {
   const [isSelectingSource, setIsSelectingSource] = useState(false);
   const [isSelectingDest, setIsSelectingDest] = useState(false);
 
-  // Visualization mode
-  const [visualizationMode, setVisualizationMode] = useState("explore"); // 'explore' or 'view'
+  // =========================
+  //   ALGORITHM RUNNER HOOK
+  // =========================
+  const {
+    algorithm,
+    isRunning,
+    isPaused,
+    currentStep,
+    steps,
+    explanation,
+    visualizationMode,
+    distanceArray,
+    visitedNodes,
+    minHeap,
+    iterationCount,
+    negativeCycleDetected,
+    currentAlgorithmStep,
+    shortestPathResult,
+    edgeUpdates,
+    setAlgorithm,
+    setShowAnswer,
+    setVisualizationMode,
+    play,
+    step,
+    reset,
+    generateSteps,
+    setExplanation,
+    setIsRunning,
+    setIsPaused,
+  } = useAlgorithmRunner({
+    nodes,
+    edges,
+    selectedSourceNode,
+    graphParams,
+    animationSpeed,
+  });
+
+  // Apply edge updates from hook
+  useEffect(() => {
+    if (edgeUpdates) {
+      setEdges(edgeUpdates);
+    }
+  }, [edgeUpdates]);
+
+  // When shortestPathResult is updated and we're in view mode, show the answer
+  useEffect(() => {
+    if (visualizationMode === "view" && shortestPathResult && shortestPathResult.paths && steps.length > 0) {
+      handleShowAnswer();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortestPathResult, visualizationMode, steps.length]);
 
   // Mobile-specific states
   const [isMobile, setIsMobile] = useState(false);
@@ -113,7 +133,6 @@ const ShortestPathVisualizer = () => {
 
   // Refs
   const svgRef = useRef(null);
-  const animationFrameId = useRef(null);
 
   // =========================
   //   MOBILE DETECTION
@@ -225,11 +244,9 @@ const ShortestPathVisualizer = () => {
       setVisualizationMode("explore");
       // Reset the graph state so user can step through again
       setShowAnswer(false);
-      setConfirmedPathEdges(new Set());
+      reset(); // Reset algorithm state via hook
       const resetEdges = edges.map((edge) => ({ ...edge, status: "unvisited" }));
       setEdges(resetEdges);
-      setCurrentStep(0);
-      setSteps([]);
       setExplanation(
         'Explore Mode: Step through the algorithm to see how it works. Press "Start" to begin.'
       );
@@ -242,26 +259,14 @@ const ShortestPathVisualizer = () => {
   const clearGraph = () => {
     setNodes([]);
     setEdges([]);
-    setVisitedNodes(new Set());
-    setMinHeap([]);
-    setDistanceArray({});
-    setIterationCount(0);
-    setNegativeCycleDetected(false);
-    setCurrentAlgorithmStep("");
+    setSelectedSourceNode(null);
+    setSelectedDestNode(null);
+
+    // Reset algorithm state via hook
+    reset();
     setExplanation(
       "Graph cleared. You can now build a new graph from scratch."
     );
-    setSelectedSourceNode(null);
-    setSelectedDestNode(null);
-    setConfirmedPathEdges(new Set());
-
-    // Reset all algorithm-related states
-    setIsRunning(false);
-    setIsPaused(false);
-    setCurrentStep(0);
-    setSteps([]);
-    setShowAnswer(false);
-    setVisualizationMode("explore");
 
     // Reset graph transform for mobile
     resetGraphTransform();
@@ -270,29 +275,12 @@ const ShortestPathVisualizer = () => {
   // =========================
   //   HANDLE SPEED CHANGE
   // =========================
-  const handleSpeedChange = (e) => {
-    const value = parseInt(e.target.value);
-    // Convert slider value (1-5) to ms (2000ms to 200ms)
-    const speed = 2200 - value * 400;
-    setAnimationSpeed(speed);
-  };
-
   // =========================
   //   GENERATE RANDOM GRAPH
   // =========================
   const handleGenerateRandomGraph = () => {
-    setIsRunning(false);
-    setIsPaused(false);
-    setCurrentStep(0);
-    setSteps([]);
-    setShowAnswer(false);
-    setVisitedNodes(new Set());
-    setMinHeap([]);
-    setDistanceArray({});
-    setIterationCount(0);
-    setNegativeCycleDetected(false);
-    setCurrentAlgorithmStep("");
-    setConfirmedPathEdges(new Set());
+    // Reset all algorithm state via hook
+    reset();
     setExplanation(
       'Random graph generated. Select an algorithm and press "Start" to begin.'
     );
@@ -341,13 +329,6 @@ const ShortestPathVisualizer = () => {
       );
     }
 
-    // Reset
-    setVisitedNodes(new Set());
-    setMinHeap([]);
-    setDistanceArray({});
-    setIterationCount(0);
-    setNegativeCycleDetected(false);
-    setConfirmedPathEdges(new Set());
     resetGraph();
   };
 
@@ -355,25 +336,9 @@ const ShortestPathVisualizer = () => {
   //   RESET GRAPH
   // =========================
   const resetGraph = () => {
-    setIsRunning(false);
-    setIsPaused(false);
-    setCurrentStep(0);
-    setSteps([]);
-    setShowAnswer(false);
-    setConfirmedPathEdges(new Set());
-    setVisualizationMode("explore");
-
+    reset();
     const resetEdges = edges.map((edge) => ({ ...edge, status: "unvisited" }));
     setEdges(resetEdges);
-
-    // Reset algorithm data
-    setVisitedNodes(new Set());
-    setMinHeap([]);
-    setDistanceArray({});
-    setIterationCount(0);
-    setNegativeCycleDetected(false);
-    setCurrentAlgorithmStep("");
-
     setExplanation(
       'Graph reset. Select an algorithm and press "Start" to begin.'
     );
@@ -383,247 +348,33 @@ const ShortestPathVisualizer = () => {
   //   PLAY / PAUSE
   // =========================
   const handlePlayPause = () => {
-    if (isRunning) {
-      setIsPaused(!isPaused);
-    } else {
-      setIsRunning(true);
-      setIsPaused(false);
-      if (steps.length === 0) {
-        // Generate steps
-        const stepList =
-          algorithm === "dijkstra"
-            ? generateDijkstraSteps({
-                nodes,
-                edges,
-                selectedSourceNode,
-                graphParams,
-                setShortestPathResult,
-              })
-            : generateBellmanFordSteps({
-                nodes,
-                edges,
-                selectedSourceNode,
-                graphParams,
-                setShortestPathResult,
-              });
-        setSteps(stepList);
-      }
-    }
+    play();
   };
 
   // =========================
   //   STEP-BY-STEP
   // =========================
   const handleStep = () => {
-    if (visualizationMode === "view") {
-      setExplanation(
-        "In View mode. Switch to Explore mode to step through the algorithm."
-      );
-      return;
-    }
-
-    if (steps.length === 0) {
-      const stepList =
-        algorithm === "dijkstra"
-          ? generateDijkstraSteps({
-              nodes,
-              edges,
-              selectedSourceNode,
-              graphParams,
-              setShortestPathResult,
-            })
-          : generateBellmanFordSteps({
-              nodes,
-              edges,
-              selectedSourceNode,
-              graphParams,
-              setShortestPathResult,
-            });
-      setSteps(stepList);
-    }
-    if (currentStep < steps.length) {
-      applyStep(currentStep);
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handleBackStep = () => {
-    if (visualizationMode === "view") {
-      setExplanation(
-        "In View mode. Switch to Explore mode to step through the algorithm."
-      );
-      return;
-    }
-
-    if (currentStep > 0) {
-      const newStep = currentStep - 1;
-
-      // Need to reset confirmed path edges when stepping back
-      if (newStep === 0) {
-        setConfirmedPathEdges(new Set());
-      } else {
-        // Recompute confirmed path edges based on all previous steps
-        const updatedConfirmedEdges = new Set();
-        for (let i = 0; i < newStep; i++) {
-          const step = steps[i];
-          if (step.pathEdgeUpdates) {
-            step.pathEdgeUpdates.forEach((edgeId) => {
-              updatedConfirmedEdges.add(edgeId);
-            });
-          }
-        }
-        setConfirmedPathEdges(updatedConfirmedEdges);
-      }
-
-      applyStep(newStep);
-      setCurrentStep(newStep);
-    }
-  };
-
-  // Forward actually advances to the next significant event
-  const handleForwardStep = () => {
-    if (visualizationMode === "view") {
-      setExplanation(
-        "In View mode. Switch to Explore mode to step through the algorithm."
-      );
-      return;
-    }
-
-    if (steps.length === 0) {
-      const stepList =
-        algorithm === "dijkstra"
-          ? generateDijkstraSteps({
-              nodes,
-              edges,
-              selectedSourceNode,
-              graphParams,
-              setShortestPathResult,
-            })
-          : generateBellmanFordSteps({
-              nodes,
-              edges,
-              selectedSourceNode,
-              graphParams,
-              setShortestPathResult,
-            });
-      setSteps(stepList);
-    }
-
-    // Skip ahead to the next significant event (path update, node visit, etc.)
-    if (currentStep < steps.length) {
-      let significantStepFound = false;
-      let nextStep = currentStep;
-
-      while (nextStep < steps.length && !significantStepFound) {
-        const step = steps[nextStep];
-
-        // Check if this step contains a significant event
-        if (
-          (step.pathEdgeUpdates && step.pathEdgeUpdates.length > 0) || // New edge in path
-          (step.visitedNodes && step.visitedNodes.size > visitedNodes.size) || // New node visited
-          step.negativeCycleDetected // Negative cycle found
-        ) {
-          significantStepFound = true;
-        } else {
-          nextStep++;
-        }
-      }
-
-      // Apply all steps up to the significant one
-      for (let i = currentStep; i <= nextStep; i++) {
-        if (i < steps.length) {
-          applyStep(i);
-        }
-      }
-
-      setCurrentStep(Math.min(nextStep + 1, steps.length));
-
-      if (nextStep >= steps.length) {
-        setExplanation("Reached the end of the algorithm execution.");
-      }
-    }
+    step();
   };
 
   // =========================
   //   APPLY STEP (memoized for performance)
   // =========================
-  const applyStep = useCallback((stepIndex) => {
-    if (stepIndex < 0 || stepIndex >= steps.length) return;
-    const step = steps[stepIndex];
-  
-    // Start with edges that have unvisited status, but preserve confirmed path edges
-    const resetEdges = edges.map((e) => {
-      // If this edge is part of a confirmed path, keep its status
-      if (confirmedPathEdges.has(e.id)) {
-        return { ...e, status: "included" };
-      }
-      return { ...e, status: "unvisited" };
-    });
-  
-    // Apply step changes
-    const newEdges = [...resetEdges];
-    step.edgeUpdates.forEach((update) => {
-      const idx = newEdges.findIndex((e) => e.id === update.id);
-      if (idx !== -1) {
-        newEdges[idx] = { ...newEdges[idx], status: update.status };
-      }
-    });
-  
-    // Track edge being relaxed
-    setCurrentRelaxingEdge(step.currentEdgeBeingRelaxed || null);
-    
-    // Track distance updates
-    setRecentlyUpdatedDistances(step.updatedDistances || []);
-  
-    // Update confirmed path edges if this step adds to the path
-    if (step.pathEdgeUpdates && step.pathEdgeUpdates.length > 0) {
-      const newConfirmedEdges = new Set(confirmedPathEdges);
-      step.pathEdgeUpdates.forEach((edgeId) => {
-        newConfirmedEdges.add(edgeId);
-  
-        // Also update the edge status to 'included'
-        const idx = newEdges.findIndex((e) => e.id === edgeId);
-        if (idx !== -1) {
-          newEdges[idx] = { ...newEdges[idx], status: "included" };
-        }
-      });
-      setConfirmedPathEdges(newConfirmedEdges);
-    }
-  
-    // Update all states
-    setEdges(newEdges);
-    setExplanation(step.explanation);
-    setCurrentAlgorithmStep(step.algorithmStep || "");
-    setVisitedNodes(new Set(step.visitedNodes || []));
-    setMinHeap([...(step.minHeap || [])]);
-    setDistanceArray({ ...(step.distanceArray || {}) });
-    setIterationCount(step.iterationCount || 0);
-    setNegativeCycleDetected(step.negativeCycleDetected || false);
-  }, [steps, edges, confirmedPathEdges]);
-
   // =========================
   //   SHOW FINAL SHORTEST PATHS
   // =========================
   const handleShowAnswer = () => {
-    // If no steps yet, generate them
+    // If no steps yet, generate them via hook (which properly updates shortestPathResult)
     if (steps.length === 0) {
-      const stepList =
-        algorithm === "dijkstra"
-          ? generateDijkstraSteps({
-              nodes,
-              edges,
-              selectedSourceNode,
-              graphParams,
-              setShortestPathResult,
-            })
-          : generateBellmanFordSteps({
-              nodes,
-              edges,
-              selectedSourceNode,
-              graphParams,
-              setShortestPathResult,
-            });
-      setSteps(stepList);
+      generateSteps();
+      // After generating steps, we need to wait for next render to have shortestPathResult
+      return;
+    }
+
+    // If shortestPathResult is not populated yet, can't show answer
+    if (!shortestPathResult || !shortestPathResult.paths) {
+      return;
     }
 
     // Mark edges
@@ -655,9 +406,6 @@ const ShortestPathVisualizer = () => {
           newEdges[index].status = "included";
         }
       });
-
-      // Save these path edges as confirmed
-      setConfirmedPathEdges(pathEdgeIds);
     } else {
       // Negative cycle detected
       const { distances } = shortestPathResult;
@@ -829,7 +577,7 @@ const ShortestPathVisualizer = () => {
       // When changing source, reset the visualization
       setShowAnswer(false);
       setVisualizationMode("explore");
-      setConfirmedPathEdges(new Set());
+      reset(); // Reset algorithm state via hook
       return;
     }
 
@@ -955,35 +703,6 @@ const ShortestPathVisualizer = () => {
     setEdges(filtered);
     setIsDeletingEdge(false);
   };
-
-  // =========================
-  //   ANIMATION LOOP
-  // =========================
-  useEffect(() => {
-    if (isRunning && !isPaused && visualizationMode === "explore") {
-      const animate = () => {
-        if (currentStep < steps.length) {
-          applyStep(currentStep);
-          setCurrentStep((prev) => prev + 1);
-          animationFrameId.current = setTimeout(animate, animationSpeed);
-        } else {
-          setIsRunning(false);
-        }
-      };
-      animationFrameId.current = setTimeout(animate, animationSpeed);
-    }
-    return () => {
-      if (animationFrameId.current) clearTimeout(animationFrameId.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    isRunning,
-    isPaused,
-    currentStep,
-    steps,
-    animationSpeed,
-    visualizationMode,
-  ]);
 
   // =========================
   //   INIT & RESIZE
@@ -1878,6 +1597,6 @@ const ShortestPathVisualizer = () => {
 
     </div>
   );
-};
+}
 
 export default ShortestPathVisualizer;

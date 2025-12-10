@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Route, Network, ArrowRight, Sparkles } from "lucide-react";
+import { Route, Network, ArrowRight, GraduationCap } from "lucide-react";
 import Link from "next/link";
 import { BentoGrid } from "@/components/ui/bento-grid";
 import { BorderBeam } from "@/components/ui/border-beam";
@@ -117,11 +117,11 @@ export default function Home() {
             transition={{ delay: 0.2, duration: 0.5 }}
             className="mb-4 inline-flex items-center gap-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-4 py-1.5 text-sm text-indigo-400"
           >
-            <Sparkles className="h-4 w-4" />
+            <GraduationCap className="h-4 w-4" />
             Interactive Algorithm Visualizations
           </motion.div>
           
-          <h1 className="mb-4 bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-5xl font-bold tracking-tight text-transparent sm:text-6xl md:text-7xl">
+          <h1 className="mb-4 bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text pb-2 text-5xl font-bold leading-tight tracking-tight text-transparent sm:text-6xl md:text-7xl">
             Master Algorithms.
           </h1>
           

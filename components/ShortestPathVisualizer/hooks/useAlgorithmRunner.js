@@ -4,34 +4,30 @@ import { generateBellmanFordSteps } from '../BellmanFordSteps';
 
 /**
  * Custom hook for managing algorithm execution state and controls.
- * Extracts the algorithm runner logic from ShortestPathVisualizer for better separation of concerns.
+ * Manages all algorithm-related state internally for better separation of concerns.
  * 
  * @param {Object} params - Hook parameters
- * @param {string} params.algorithm - 'dijkstra' or 'bellmanford'
  * @param {Array} params.nodes - Array of node objects
- * @param {Array} params.edges - Array of edge objects
+ * @param {Array} params.edges - Array of edge objects (managed by component, hook returns updates)
  * @param {number|null} params.selectedSourceNode - Index of the source node
  * @param {Object} params.graphParams - Graph configuration parameters
- * @param {string} params.visualizationMode - 'explore' or 'view'
  * @param {number} params.animationSpeed - Animation delay in milliseconds
- * @param {Function} params.onStepApply - Callback to apply a step's changes to the visualization
- * @param {Function} params.setShortestPathResult - Setter for shortest path results
- * @param {Function} params.setExplanation - Setter for explanation text
  * 
  * @returns {Object} Algorithm runner state and controls
  */
 export function useAlgorithmRunner({
-  algorithm,
   nodes,
   edges,
   selectedSourceNode,
   graphParams,
-  visualizationMode,
   animationSpeed,
-  onStepApply,
-  setShortestPathResult,
-  setExplanation,
 }) {
+  // =========================
+  //   ALGORITHM CONFIGURATION
+  // =========================
+  const [algorithm, setAlgorithmInternal] = useState("dijkstra");
+  const [visualizationMode, setVisualizationMode] = useState("explore");
+  
   // =========================
   //   RUNNER STATE
   // =========================
@@ -39,9 +35,96 @@ export function useAlgorithmRunner({
   const [isPaused, setIsPaused] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [steps, setSteps] = useState([]);
+  const [showAnswer, setShowAnswer] = useState(false);
+  
+  // =========================
+  //   ALGORITHM DATA STRUCTURES
+  // =========================
+  const [distanceArray, setDistanceArray] = useState({});
+  const [visitedNodes, setVisitedNodes] = useState(new Set());
+  const [minHeap, setMinHeap] = useState([]);
+  const [iterationCount, setIterationCount] = useState(0);
+  const [negativeCycleDetected, setNegativeCycleDetected] = useState(false);
+  const [currentAlgorithmStep, setCurrentAlgorithmStep] = useState("");
+  const [shortestPathResult, setShortestPathResult] = useState({
+    distances: {},
+    paths: {},
+  });
+  const [explanation, setExplanation] = useState("");
+  
+  // =========================
+  //   EDGE TRACKING STATE
+  // =========================
+  const [currentRelaxingEdge, setCurrentRelaxingEdge] = useState(null);
+  const [recentlyUpdatedDistances, setRecentlyUpdatedDistances] = useState([]);
+  const [confirmedPathEdges, setConfirmedPathEdges] = useState(new Set());
+  
+  // =========================
+  //   EDGE UPDATES (for component to apply)
+  // =========================
+  const [edgeUpdates, setEdgeUpdates] = useState(null);
 
   // Ref for animation timeout
   const animationFrameId = useRef(null);
+
+  // =========================
+  //   APPLY STEP - Core step application logic
+  // =========================
+  const applyStep = useCallback((stepIndex, currentEdges) => {
+    if (stepIndex < 0 || stepIndex >= steps.length) return currentEdges;
+    const step = steps[stepIndex];
+  
+    // Start with edges that have unvisited status, but preserve confirmed path edges
+    const resetEdges = currentEdges.map((e) => {
+      // If this edge is part of a confirmed path, keep its status
+      if (confirmedPathEdges.has(e.id)) {
+        return { ...e, status: "included" };
+      }
+      return { ...e, status: "unvisited" };
+    });
+  
+    // Apply step changes
+    const newEdges = [...resetEdges];
+    step.edgeUpdates.forEach((update) => {
+      const idx = newEdges.findIndex((e) => e.id === update.id);
+      if (idx !== -1) {
+        newEdges[idx] = { ...newEdges[idx], status: update.status };
+      }
+    });
+  
+    // Track edge being relaxed
+    setCurrentRelaxingEdge(step.currentEdgeBeingRelaxed || null);
+    
+    // Track distance updates
+    setRecentlyUpdatedDistances(step.updatedDistances || []);
+  
+    // Update confirmed path edges if this step adds to the path
+    if (step.pathEdgeUpdates && step.pathEdgeUpdates.length > 0) {
+      const newConfirmedEdges = new Set(confirmedPathEdges);
+      step.pathEdgeUpdates.forEach((edgeId) => {
+        newConfirmedEdges.add(edgeId);
+  
+        // Also update the edge status to 'included'
+        const idx = newEdges.findIndex((e) => e.id === edgeId);
+        if (idx !== -1) {
+          newEdges[idx] = { ...newEdges[idx], status: "included" };
+        }
+      });
+      setConfirmedPathEdges(newConfirmedEdges);
+    }
+  
+    // Update all algorithm states
+    setExplanation(step.explanation);
+    setCurrentAlgorithmStep(step.algorithmStep || "");
+    setVisitedNodes(new Set(step.visitedNodes || []));
+    setMinHeap([...(step.minHeap || [])]);
+    setDistanceArray({ ...(step.distanceArray || {}) });
+    setIterationCount(step.iterationCount || 0);
+    setNegativeCycleDetected(step.negativeCycleDetected || false);
+    
+    // Return updated edges for component to apply
+    return newEdges;
+  }, [steps, confirmedPathEdges]);
 
   // =========================
   //   STEP GENERATION
@@ -65,7 +148,7 @@ export function useAlgorithmRunner({
           });
     setSteps(stepList);
     return stepList;
-  }, [algorithm, nodes, edges, selectedSourceNode, graphParams, setShortestPathResult]);
+  }, [algorithm, nodes, edges, selectedSourceNode, graphParams]);
 
   // =========================
   //   PLAY / PAUSE
@@ -107,10 +190,11 @@ export function useAlgorithmRunner({
     }
 
     if (currentStep < currentSteps.length) {
-      onStepApply(currentStep, currentSteps);
+      const updatedEdges = applyStep(currentStep, edges);
+      setEdgeUpdates(updatedEdges);
       setCurrentStep(currentStep + 1);
     }
-  }, [visualizationMode, steps, currentStep, generateSteps, onStepApply, setExplanation]);
+  }, [visualizationMode, steps, currentStep, edges, generateSteps, applyStep]);
 
   // =========================
   //   STEP BACKWARD
@@ -123,15 +207,28 @@ export function useAlgorithmRunner({
 
     if (currentStep > 0) {
       const newStep = currentStep - 1;
-      onStepApply(newStep, steps, { isBackward: true, previousStep: currentStep });
+      
+      // Recompute confirmed path edges from previous steps
+      const newConfirmedEdges = new Set();
+      for (let i = 0; i <= newStep; i++) {
+        if (steps[i]?.pathEdgeUpdates) {
+          steps[i].pathEdgeUpdates.forEach((edgeId) => {
+            newConfirmedEdges.add(edgeId);
+          });
+        }
+      }
+      setConfirmedPathEdges(newConfirmedEdges);
+      
+      const updatedEdges = applyStep(newStep, edges);
+      setEdgeUpdates(updatedEdges);
       setCurrentStep(newStep);
     }
-  }, [visualizationMode, currentStep, steps, onStepApply, setExplanation]);
+  }, [visualizationMode, currentStep, steps, edges, applyStep]);
 
   // =========================
   //   FORWARD TO SIGNIFICANT EVENT
   // =========================
-  const forwardStep = useCallback((visitedNodes) => {
+  const forwardStep = useCallback(() => {
     if (visualizationMode === 'view') {
       setExplanation('In View mode. Switch to Explore mode to step through the algorithm.');
       return;
@@ -162,11 +259,10 @@ export function useAlgorithmRunner({
         }
       }
 
-      // Apply all steps up to the significant one
-      for (let i = currentStep; i <= nextStep; i++) {
-        if (i < currentSteps.length) {
-          onStepApply(i, currentSteps, { isBatch: true });
-        }
+      // Apply the final significant step
+      if (nextStep < currentSteps.length) {
+        const updatedEdges = applyStep(nextStep, edges);
+        setEdgeUpdates(updatedEdges);
       }
 
       setCurrentStep(Math.min(nextStep + 1, currentSteps.length));
@@ -175,7 +271,36 @@ export function useAlgorithmRunner({
         setExplanation('Reached the end of the algorithm execution.');
       }
     }
-  }, [visualizationMode, steps, currentStep, generateSteps, onStepApply, setExplanation]);
+  }, [visualizationMode, steps, currentStep, edges, visitedNodes, generateSteps, applyStep]);
+
+  // =========================
+  //   ALGORITHM CHANGE
+  // =========================
+  const setAlgorithm = useCallback((newAlgorithm) => {
+    setAlgorithmInternal(newAlgorithm);
+    // Reset execution state when algorithm changes
+    setIsRunning(false);
+    setIsPaused(false);
+    setCurrentStep(0);
+    setSteps([]);
+    setConfirmedPathEdges(new Set());
+    setDistanceArray({});
+    setVisitedNodes(new Set());
+    setMinHeap([]);
+    setIterationCount(0);
+    setNegativeCycleDetected(false);
+    setCurrentAlgorithmStep("");
+    setShortestPathResult({ distances: {}, paths: {} });
+    setExplanation("");
+    setCurrentRelaxingEdge(null);
+    setRecentlyUpdatedDistances([]);
+    setShowAnswer(false);
+    
+    if (animationFrameId.current) {
+      clearTimeout(animationFrameId.current);
+      animationFrameId.current = null;
+    }
+  }, []);
 
   // =========================
   //   RESET
@@ -185,6 +310,18 @@ export function useAlgorithmRunner({
     setIsPaused(false);
     setCurrentStep(0);
     setSteps([]);
+    setConfirmedPathEdges(new Set());
+    setDistanceArray({});
+    setVisitedNodes(new Set());
+    setMinHeap([]);
+    setIterationCount(0);
+    setNegativeCycleDetected(false);
+    setCurrentAlgorithmStep("");
+    setShortestPathResult({ distances: {}, paths: {} });
+    setExplanation("");
+    setCurrentRelaxingEdge(null);
+    setRecentlyUpdatedDistances([]);
+    setShowAnswer(false);
     
     // Clear animation timeout
     if (animationFrameId.current) {
@@ -200,7 +337,8 @@ export function useAlgorithmRunner({
     if (isRunning && !isPaused && visualizationMode === 'explore') {
       const animate = () => {
         if (currentStep < steps.length) {
-          onStepApply(currentStep, steps);
+          const updatedEdges = applyStep(currentStep, edges);
+          setEdgeUpdates(updatedEdges);
           setCurrentStep((prev) => prev + 1);
           animationFrameId.current = setTimeout(animate, animationSpeed);
         } else {
@@ -215,7 +353,7 @@ export function useAlgorithmRunner({
         clearTimeout(animationFrameId.current);
       }
     };
-  }, [isRunning, isPaused, currentStep, steps, animationSpeed, visualizationMode, onStepApply]);
+  }, [isRunning, isPaused, currentStep, steps, edges, animationSpeed, visualizationMode, applyStep]);
 
   // =========================
   //   CLEANUP ON UNMOUNT
@@ -229,13 +367,37 @@ export function useAlgorithmRunner({
   }, []);
 
   return {
-    // State
+    // Execution State
+    algorithm,
     isRunning,
     isPaused,
     currentStep,
     steps,
+    showAnswer,
+    explanation,
+    visualizationMode,
     
-    // Actions
+    // Algorithm Data Structures
+    distanceArray,
+    visitedNodes,
+    minHeap,
+    iterationCount,
+    negativeCycleDetected,
+    currentAlgorithmStep,
+    shortestPathResult,
+    
+    // Edge Tracking
+    currentRelaxingEdge,
+    recentlyUpdatedDistances,
+    confirmedPathEdges,
+    
+    // Edge Updates (for component to apply)
+    edgeUpdates,
+    
+    // Controls
+    setAlgorithm,
+    setShowAnswer,
+    setVisualizationMode,
     play,
     pause,
     resume,
@@ -250,6 +412,7 @@ export function useAlgorithmRunner({
     setCurrentStep,
     setIsRunning,
     setIsPaused,
+    setExplanation,
   };
 }
 

@@ -52,6 +52,7 @@ const AlgorithmVisualizer = ({
 }) => {
   const [isVisible, setIsVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [showPulse, setShowPulse] = useState(false);
   
   // Detect mobile viewport
   useEffect(() => {
@@ -69,6 +70,10 @@ const AlgorithmVisualizer = ({
     const savedVisibility = localStorage.getItem('algorithmPanelVisible');
     if (savedVisibility !== null) {
       setIsVisible(savedVisibility === 'true');
+    } else {
+      // First time visitor - show pulse animation
+      setShowPulse(true);
+      setTimeout(() => setShowPulse(false), 3000);
     }
   }, []);
   
@@ -84,17 +89,26 @@ const AlgorithmVisualizer = ({
   return (
     <>
       {/* Toggle button */}
-      <button 
-        onClick={() => setIsVisible(!isVisible)}
-        className="absolute top-3 left-3 z-30 bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-full shadow-lg transition-colors"
-        title={isVisible ? "Hide Details" : "Show Details"}
-      >
-        {isVisible ? (
-          <Eye className="h-5 w-5" />
-        ) : (
-          <EyeOff className="h-5 w-5" />
-        )}
-      </button>
+      <div className="absolute top-3 left-3 z-30 group">
+        <button 
+          onClick={() => setIsVisible(!isVisible)}
+          className={`bg-indigo-500 hover:bg-indigo-600 text-white rounded-full shadow-lg transition-all ${
+            isVisible ? 'p-2' : 'p-3'
+          } ${showPulse ? 'animate-pulse' : ''}`}
+          aria-label={isVisible ? "Hide algorithm steps" : "Show algorithm steps"}
+        >
+          {isVisible ? (
+            <Eye className="h-5 w-5" />
+          ) : (
+            <EyeOff className="h-6 w-6" />
+          )}
+        </button>
+        
+        {/* Tooltip */}
+        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-gray-900 text-white text-sm rounded-md opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          {isVisible ? "Hide" : "Show"} Algorithm Steps
+        </div>
+      </div>
       
       {/* Main panel */}
       {isVisible && (

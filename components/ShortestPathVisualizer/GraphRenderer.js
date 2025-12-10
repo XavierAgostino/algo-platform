@@ -1,4 +1,42 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import {
+  findNonConflictingPosition,
+  calculateEdgePath,
+} from "./graphHelpers";
+
+/**
+ * Custom hook to detect mobile devices
+ * Listens for window resize events to keep mobile state in sync with viewport
+ */
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 768 ||
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768 ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+      setIsMobile(mobile);
+    };
+
+    window.addEventListener("resize", handleResize);
+    // Call once to ensure initial state is correct
+    handleResize();
+
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return isMobile;
+}
 
 /**
  * A pure "presentational" component that draws nodes and edges in the SVG.
@@ -24,14 +62,8 @@ function GraphRenderer({
   algorithm = 'dijkstra',
   hasNegativeCycle = false
 }) {
-  // Check if we're on mobile based on user agent and screen size
-  const isMobile = useMemo(() => {
-    return typeof window !== "undefined" &&
-      (window.innerWidth < 768 ||
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
-        ));
-  }, []);
+  // Use custom hook to detect mobile devices with proper resize handling
+  const isMobile = useIsMobile();
 
   // Helper to get algorithm-specific styles - memoized since it only depends on algorithm and isMobile
   const styles = useMemo(() => {
@@ -71,165 +103,37 @@ function GraphRenderer({
   const processedEdges = useMemo(() => {
     // Create a map to track edge weight label positions and prevent overlap
     const usedLabelPositions = new Map();
-    
-    // Helper to get a unique key for a position (for collision detection)
-    const getPositionKey = (x, y) => {
-      // Round to the nearest 5 pixels to create collision "cells"
-      const gridSize = isMobile ? 15 : 10;
-      const cellX = Math.round(x / gridSize);
-      const cellY = Math.round(y / gridSize);
-      return `${cellX},${cellY}`;
-    };
-    
-    // Helper to check if a position is already in use
-    const isPositionUsed = (x, y) => {
-      const key = getPositionKey(x, y);
-      return usedLabelPositions.has(key);
-    };
-    
-    // Mark a position as used
-    const markPositionUsed = (x, y) => {
-      const key = getPositionKey(x, y);
-      usedLabelPositions.set(key, true);
-    };
-    
-    // Find a nearby non-conflicting position for a label
-    const findNonConflictingPosition = (baseX, baseY, angle, attempts = 8) => {
-      // First try the original position
-      if (!isPositionUsed(baseX, baseY)) {
-        markPositionUsed(baseX, baseY);
-        return { x: baseX, y: baseY };
-      }
-      
-      // Try positions along and perpendicular to the edge
-      const perpAngle = angle + Math.PI / 2;
-      const offset = isMobile ? 20 : 15;
-      
-      for (let i = 1; i <= attempts; i++) {
-        // Try perpendicular offset
-        const perpX = baseX + Math.cos(perpAngle) * offset * i;
-        const perpY = baseY + Math.sin(perpAngle) * offset * i;
-        
-        if (!isPositionUsed(perpX, perpY)) {
-          markPositionUsed(perpX, perpY);
-          return { x: perpX, y: perpY };
-        }
-        
-        // Try moving along the edge
-        const alongX = baseX + Math.cos(angle) * offset * i * 0.5;
-        const alongY = baseY + Math.sin(angle) * offset * i * 0.5;
-        
-        if (!isPositionUsed(alongX, alongY)) {
-          markPositionUsed(alongX, alongY);
-          return { x: alongX, y: alongY };
-        }
-        
-        // Try diagonals for more options
-        const diagX1 = baseX + Math.cos(perpAngle + Math.PI/4) * offset * i;
-        const diagY1 = baseY + Math.sin(perpAngle + Math.PI/4) * offset * i;
-        
-        if (!isPositionUsed(diagX1, diagY1)) {
-          markPositionUsed(diagX1, diagY1);
-          return { x: diagX1, y: diagY1 };
-        }
-        
-        const diagX2 = baseX + Math.cos(perpAngle - Math.PI/4) * offset * i;
-        const diagY2 = baseY + Math.sin(perpAngle - Math.PI/4) * offset * i;
-        
-        if (!isPositionUsed(diagX2, diagY2)) {
-          markPositionUsed(diagX2, diagY2);
-          return { x: diagX2, y: diagY2 };
-        }
-      }
-      
-      // If all positions are taken, just use the original
-      markPositionUsed(baseX, baseY);
-      return { x: baseX, y: baseY };
-    };
 
     // Process all edges to assign optimal weight positions
-    return edges.map(edge => {
-      const source = nodes[edge.source];
-      const target = nodes[edge.target];
-      if (!source || !target) return null;
+    return edges
+      .map((edge) => {
+        const source = nodes[edge.source];
+        const target = nodes[edge.target];
+        if (!source || !target) return null;
 
-      // Compute angle for arrow
-      const dx = target.x - source.x;
-      const dy = target.y - source.y;
-      const angle = Math.atan2(dy, dx);
+        // Calculate edge path using extracted helper function
+        const edgeCalculations = calculateEdgePath(source, target, isMobile);
 
-      // For node radius, arrow offset, etc.
-      const nodeRadius = isMobile ? 18 : 20;
+        // Find a non-conflicting position for the weight label
+        const { x: adjustedLabelX, y: adjustedLabelY } =
+          findNonConflictingPosition(
+            edgeCalculations.labelX,
+            edgeCalculations.labelY,
+            edgeCalculations.angle,
+            usedLabelPositions,
+            isMobile
+          );
 
-      // Variables for path calculation
-      const sourceX = source.x + nodeRadius * Math.cos(angle);
-      const sourceY = source.y + nodeRadius * Math.sin(angle);
-      const targetX = target.x - nodeRadius * Math.cos(angle);
-      const targetY = target.y - nodeRadius * Math.sin(angle);
-      
-      // Calculate edge length and determine placement strategy
-      const edgeLength = Math.sqrt(dx * dx + dy * dy);
-      const isShorterEdge = edgeLength < 100;
-      const isLongerEdge = edgeLength > 180;
-      
-      // Calculate Bezier curve control point for smooth edges
-      const perpAngle = angle + Math.PI / 2;
-      // Curve intensity scales with edge length - longer edges get more curve
-      const curveIntensity = isMobile 
-        ? Math.min(edgeLength * 0.12, 25) 
-        : Math.min(edgeLength * 0.1, 20);
-      
-      // Calculate midpoint of the straight line
-      const straightMidX = (sourceX + targetX) / 2;
-      const straightMidY = (sourceY + targetY) / 2;
-      
-      // Control point for quadratic Bezier - offset perpendicular to the edge
-      const controlX = straightMidX + Math.cos(perpAngle) * curveIntensity;
-      const controlY = straightMidY + Math.sin(perpAngle) * curveIntensity;
-      
-      // Calculate the actual midpoint of the Bezier curve (at t=0.5)
-      // For quadratic Bezier: B(0.5) = 0.25*P0 + 0.5*P1 + 0.25*P2
-      const bezierMidX = 0.25 * sourceX + 0.5 * controlX + 0.25 * targetX;
-      const bezierMidY = 0.25 * sourceY + 0.5 * controlY + 0.25 * targetY;
-      
-      // Determine weight label position relative to the Bezier curve midpoint
-      const baseOffset = isMobile ? 14 : 10;
-      const lengthAdjustment = isShorterEdge ? 0.8 : (isLongerEdge ? 1.2 : 1.0);
-      const labelOffset = baseOffset * lengthAdjustment;
-      
-      // Calculate initial label position (offset from Bezier midpoint)
-      const labelX = bezierMidX + Math.cos(perpAngle) * labelOffset;
-      const labelY = bezierMidY + Math.sin(perpAngle) * labelOffset;
-      
-      // Find a non-conflicting position for this label
-      const { x: adjustedLabelX, y: adjustedLabelY } = findNonConflictingPosition(
-        labelX, labelY, angle
-      );
-      
-      // Calculate the tangent angle at the end of the curve for the arrowhead
-      // For quadratic Bezier, the tangent at t=1 is the direction from control point to end point
-      const endTangentAngle = Math.atan2(targetY - controlY, targetX - controlX);
-      
-      // Create the Bezier curve path
-      const bezierPath = `M ${sourceX} ${sourceY} Q ${controlX} ${controlY} ${targetX} ${targetY}`;
-      
-      return {
-        ...edge,
-        source,
-        target,
-        sourceX,
-        sourceY,
-        targetX,
-        targetY,
-        controlX,
-        controlY,
-        angle,
-        endTangentAngle,
-        adjustedLabelX,
-        adjustedLabelY,
-        bezierPath
-      };
-    }).filter(Boolean);
+        return {
+          ...edge,
+          source,
+          target,
+          ...edgeCalculations,
+          adjustedLabelX,
+          adjustedLabelY,
+        };
+      })
+      .filter(Boolean);
   }, [nodes, edges, isMobile]);
 
   // RENDER EDGES - uses memoized processedEdges
@@ -300,7 +204,16 @@ function GraphRenderer({
         <g
           key={edge.id}
           onClick={() => onEdgeClick(edge.id)}
-          className="cursor-pointer"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onEdgeClick(edge.id);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={`Edge from ${source.label} to ${target.label} with weight ${edge.weight}`}
+          className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
           data-tooltip={`${source.label} → ${target.label} (${edge.weight})`}
         >
           {/* For Bellman-Ford, add a glow effect to negative edges (rendered first for layering) */}
@@ -421,7 +334,18 @@ function GraphRenderer({
         <g
           key={node.id}
           onClick={() => onNodeClick(node.id)}
-          className="cursor-pointer"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onNodeClick(node.id);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label={`Node ${node.label}${
+            dist !== undefined ? `, distance: ${distanceLabel}` : ''
+          }`}
+          className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
         >
           {/* Invisible larger hit area for mobile */}
           {isMobile && (
