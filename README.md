@@ -2,7 +2,7 @@
 
 A comprehensive, interactive platform for visualizing and understanding computer science algorithms through step-by-step visual demonstrations. Built to make complex algorithms accessible to students, educators, and learners worldwide.
 
-![AlgoPlatform Dashboard](./homescreen.png)
+![AlgoPlatform Dashboard](./public/homescreen.png)
 
 **Live Demo: [algo-platform.vercel.app](https://algo-platform.vercel.app)**
 
@@ -12,7 +12,7 @@ AlgoPlatform is an educational web application designed to help students underst
 
 The application is fully responsive and works seamlessly on desktop, tablet, and mobile devices, making algorithm visualization accessible to learners anywhere in the world.
 
-![Mobile Interface](./mobile.png)
+![Mobile Interface](./public/mobile.png)
 
 ## Motivation
 
