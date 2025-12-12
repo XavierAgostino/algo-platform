@@ -3,7 +3,6 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { BrowserFrame } from "@/components/ui/browser-frame";
-import { Glow } from "@/components/ui/glow";
 import { Github as GitHubIcon } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -96,9 +95,9 @@ export function HeroSection() {
               onClick={handleStartExploring}
               size="lg"
               className={cn(
-                "bg-gradient-to-b from-brand to-brand/90 dark:from-brand/90 dark:to-brand/80",
-                "hover:from-brand/95 hover:to-brand/85 dark:hover:from-brand/80 dark:hover:to-brand/70",
-                "text-white shadow-lg",
+                "bg-gradient-to-b from-purple-500 to-purple-600 dark:from-purple-500 dark:to-purple-600",
+                "hover:from-purple-600 hover:to-purple-700 dark:hover:from-purple-600 dark:hover:to-purple-700",
+                "text-white shadow-lg shadow-purple-500/50",
                 "transition-all duration-300"
               )}
             >
@@ -111,6 +110,7 @@ export function HeroSection() {
               variant="ghost"
               className={cn(
                 "text-foreground/80 dark:text-foreground/70",
+                "hover:bg-purple-500/10 hover:text-purple-500 dark:hover:bg-purple-500/20 dark:hover:text-purple-400",
                 "transition-all duration-300"
               )}
             >
@@ -177,12 +177,20 @@ export function HeroSection() {
           </div>
         </div>
       </div>
-      {/* Background Glow */}
+      {/* Background Purple Gradient Glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <Glow
-          variant="above"
+        <div
           className={cn(
-            "transition-all duration-700 ease-out",
+            "absolute left-1/2 h-[512px] w-[60%] -translate-x-1/2 -top-[128px] scale-[2.5] rounded-[50%] transition-all duration-700 ease-out",
+            "bg-[radial-gradient(ellipse_at_center,_rgba(168,85,247,0.5)_10%,_rgba(168,85,247,0)_60%)] sm:h-[512px]",
+            isMounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
+          )}
+          style={{ transitionDelay: "700ms" }}
+        />
+        <div
+          className={cn(
+            "absolute left-1/2 h-[256px] w-[40%] -translate-x-1/2 -top-[128px] scale-[2] rounded-[50%] transition-all duration-700 ease-out",
+            "bg-[radial-gradient(ellipse_at_center,_rgba(139,92,246,0.3)_10%,_rgba(139,92,246,0)_60%)] sm:h-[256px]",
             isMounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
           )}
           style={{ transitionDelay: "700ms" }}
