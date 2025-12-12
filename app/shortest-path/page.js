@@ -8,11 +8,7 @@ function ShortestPathContent() {
   const searchParams = useSearchParams();
   const isEmbedded = searchParams.get('embedded') === 'true';
 
-  return (
-    <div className={isEmbedded ? 'h-full overflow-hidden' : ''}>
-      <ShortestPathVisualizer embedded={isEmbedded} />
-    </div>
-  );
+  return <ShortestPathVisualizer embedded={isEmbedded} />;
 }
 
 export default function ShortestPathPage() {

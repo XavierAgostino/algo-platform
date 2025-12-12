@@ -1040,7 +1040,10 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
   // =========================
 
   return (
-    <div className={embedded ? "flex flex-col h-full bg-zinc-100 dark:bg-zinc-950 overflow-hidden" : "flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950"}>
+    <div 
+      className={embedded ? "flex flex-col bg-zinc-100 dark:bg-zinc-950" : "flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950"}
+      style={embedded ? { height: '600px', maxHeight: '600px', overflow: 'hidden' } : undefined}
+    >
       {/* FLOATING NAVBAR */}
       <div className="fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)] overflow-visible">
         <FloatingNav>
