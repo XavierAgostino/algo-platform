@@ -10,13 +10,26 @@ import { useState, useEffect } from "react";
 export function HeroSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [iframeError, setIframeError] = useState(false);
+  const [iframeSrc, setIframeSrc] = useState('/shortest-path');
 
   useEffect(() => {
+    // Use absolute URL in production (Vercel)
+    if (typeof window !== 'undefined') {
+      const isProduction = window.location.hostname.includes('vercel.app') || 
+                          window.location.hostname.includes('algo-platform');
+      if (isProduction) {
+        setIframeSrc(`${window.location.origin}/shortest-path`);
+      }
+    }
+    
     // Simulate iframe loading
-    const timer = setTimeout(() => {
+    const loadingTimer = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
-    return () => clearTimeout(timer);
+    
+    return () => {
+      clearTimeout(loadingTimer);
+    };
   }, []);
 
   const handleStartExploring = () => {
@@ -103,12 +116,13 @@ export function HeroSection() {
           <div className="relative w-full pt-12 px-4 sm:px-6 lg:px-8">
             <div
               className={cn(
-                "animate-appear opacity-0 [animation-delay:700ms]",
-                "shadow-[0_0_50px_-12px_rgba(0,0,0,0.3)] dark:shadow-[0_0_50px_-12px_rgba(255,255,255,0.1)]"
+                "shadow-[0_0_50px_-12px_rgba(0,0,0,0.3)] dark:shadow-[0_0_50px_-12px_rgba(255,255,255,0.1)]",
+                "animate-appear opacity-0 [animation-delay:700ms]"
               )}
               style={{ 
                 animationFillMode: 'forwards',
-                willChange: 'opacity, transform'
+                // Ensure it becomes visible even if animation doesn't complete
+                animation: 'appear 0.5s ease-out 0.7s forwards'
               }}
             >
               <BrowserFrame url="algo-platform.com/shortest-path">
@@ -130,15 +144,17 @@ export function HeroSection() {
                   </div>
                 ) : (
                   <iframe
-                    src="/shortest-path"
+                    src={iframeSrc}
                     className="w-full h-[400px] md:h-[500px] lg:h-[600px] border-0"
                     title="Shortest Path Visualizer Preview"
                     loading="lazy"
                     onError={() => {
-                      console.error('Iframe failed to load');
+                      console.error('Iframe failed to load', iframeSrc);
                       setIframeError(true);
+                      setIsLoading(false);
                     }}
                     onLoad={() => {
+                      console.log('Iframe loaded successfully', iframeSrc);
                       setIsLoading(false);
                     }}
                     allow="fullscreen"
