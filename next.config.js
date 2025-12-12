@@ -6,6 +6,21 @@ const nextConfig = {
   // Transpile packages if needed
   transpilePackages: [],
   
+  // Headers to allow iframe embedding
+  async headers() {
+    return [
+      {
+        source: '/shortest-path',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+        ],
+      },
+    ];
+  },
+  
   // Webpack configuration for SVG handling
   webpack(config) {
     config.module.rules.push({

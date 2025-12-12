@@ -9,6 +9,7 @@ import { useState, useEffect } from "react";
 
 export function HeroSection() {
   const [isLoading, setIsLoading] = useState(true);
+  const [iframeError, setIframeError] = useState(false);
 
   useEffect(() => {
     // Simulate iframe loading
@@ -105,11 +106,27 @@ export function HeroSection() {
                 "animate-appear opacity-0 [animation-delay:700ms]",
                 "shadow-[0_0_50px_-12px_rgba(0,0,0,0.3)] dark:shadow-[0_0_50px_-12px_rgba(255,255,255,0.1)]"
               )}
+              style={{ 
+                animationFillMode: 'forwards',
+                willChange: 'opacity, transform'
+              }}
             >
               <BrowserFrame url="algo-platform.com/shortest-path">
                 {isLoading ? (
                   <div className="flex h-[400px] md:h-[500px] lg:h-[600px] items-center justify-center bg-muted/20">
                     <div className="text-muted-foreground">Loading preview...</div>
+                  </div>
+                ) : iframeError ? (
+                  <div className="flex h-[400px] md:h-[500px] lg:h-[600px] items-center justify-center bg-muted/20">
+                    <div className="text-center">
+                      <p className="text-muted-foreground mb-4">Preview unavailable</p>
+                      <a 
+                        href="/shortest-path" 
+                        className="text-brand hover:underline"
+                      >
+                        Open Shortest Path Visualizer →
+                      </a>
+                    </div>
                   </div>
                 ) : (
                   <iframe
@@ -117,6 +134,15 @@ export function HeroSection() {
                     className="w-full h-[400px] md:h-[500px] lg:h-[600px] border-0"
                     title="Shortest Path Visualizer Preview"
                     loading="lazy"
+                    onError={() => {
+                      console.error('Iframe failed to load');
+                      setIframeError(true);
+                    }}
+                    onLoad={() => {
+                      setIsLoading(false);
+                    }}
+                    allow="fullscreen"
+                    referrerPolicy="same-origin"
                   />
                 )}
               </BrowserFrame>
