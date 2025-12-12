@@ -11,22 +11,26 @@ export function HeroSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [iframeError, setIframeError] = useState(false);
   const [iframeSrc, setIframeSrc] = useState('/shortest-path?embedded=true');
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    // Mark as mounted to trigger animations after hydration
+    setIsMounted(true);
+
     // Use absolute URL in production (Vercel)
     if (typeof window !== 'undefined') {
-      const isProduction = window.location.hostname.includes('vercel.app') || 
+      const isProduction = window.location.hostname.includes('vercel.app') ||
                           window.location.hostname.includes('algo-platform');
       if (isProduction) {
         setIframeSrc(`${window.location.origin}/shortest-path?embedded=true`);
       }
     }
-    
+
     // Simulate iframe loading
     const loadingTimer = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
-    
+
     return () => {
       clearTimeout(loadingTimer);
     };
@@ -53,12 +57,13 @@ export function HeroSection() {
           {/* Heading */}
           <h1
             className={cn(
-              "inline-block animate-appear",
+              "inline-block transition-all duration-500 ease-out",
               "bg-gradient-to-b from-foreground via-foreground/90 to-muted-foreground",
               "bg-clip-text text-transparent",
               "text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl",
               "leading-[1.1] sm:leading-[1.1]",
-              "drop-shadow-sm dark:drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+              "drop-shadow-sm dark:drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]",
+              isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
             )}
           >
             Visualize Complex Algorithms. Master Graph Theory.
@@ -67,11 +72,13 @@ export function HeroSection() {
           {/* Description */}
           <p
             className={cn(
-              "max-w-[550px] animate-appear opacity-0 [animation-delay:150ms]",
+              "max-w-[550px] transition-all duration-500 ease-out",
               "text-base sm:text-lg md:text-xl",
               "text-muted-foreground",
-              "font-medium"
+              "font-medium",
+              isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
             )}
+            style={{ transitionDelay: "150ms" }}
           >
             Interactive, step-by-step visualizations for Dijkstra, Bellman-Ford, and A*. Built for students and engineers.
           </p>
@@ -80,8 +87,10 @@ export function HeroSection() {
           <div
             className={cn(
               "relative z-10 flex flex-wrap justify-center gap-4",
-              "animate-appear opacity-0 [animation-delay:300ms]"
+              "transition-all duration-500 ease-out",
+              isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
             )}
+            style={{ transitionDelay: "300ms" }}
           >
             <Button
               onClick={handleStartExploring}
@@ -117,13 +126,10 @@ export function HeroSection() {
             <div
               className={cn(
                 "shadow-[0_0_50px_-12px_rgba(0,0,0,0.3)] dark:shadow-[0_0_50px_-12px_rgba(255,255,255,0.1)]",
-                "animate-appear opacity-0 [animation-delay:700ms]"
+                "transition-all duration-500 ease-out",
+                isMounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
               )}
-              style={{ 
-                animationFillMode: 'forwards',
-                // Ensure it becomes visible even if animation doesn't complete
-                animation: 'appear 0.5s ease-out 0.7s forwards'
-              }}
+              style={{ transitionDelay: "500ms" }}
             >
               <BrowserFrame url="algo-platform.com/shortest-path">
                 {isLoading ? (
@@ -175,7 +181,11 @@ export function HeroSection() {
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <Glow
           variant="above"
-          className="animate-appear-zoom opacity-0 [animation-delay:1000ms]"
+          className={cn(
+            "transition-all duration-700 ease-out",
+            isMounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
+          )}
+          style={{ transitionDelay: "700ms" }}
         />
       </div>
     </section>
