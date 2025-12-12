@@ -1041,11 +1041,11 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
 
   return (
     <div 
-      className={embedded ? "flex flex-col bg-zinc-100 dark:bg-zinc-950" : "flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950"}
+      className={embedded ? "relative flex flex-col bg-zinc-100 dark:bg-zinc-950" : "flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950"}
       style={embedded ? { height: '600px', maxHeight: '600px', overflow: 'hidden' } : undefined}
     >
       {/* FLOATING NAVBAR */}
-      <div className="fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)] overflow-visible">
+      <div className={embedded ? "absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)] overflow-visible" : "fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)] overflow-visible"}>
         <FloatingNav>
           {/* Home Button */}
           <Link href="/" className="flex items-center justify-center rounded-full p-1.5 sm:p-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800 transition-all duration-200 flex-shrink-0" title="Back to Dashboard">
@@ -1147,7 +1147,7 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
 
       {/* LEGEND (Collapsible) */}
       {showLegend && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-lg border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 overflow-x-auto">
+        <div className={embedded ? "absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-lg border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 overflow-x-auto" : "fixed top-20 left-1/2 -translate-x-1/2 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shadow-lg border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 overflow-x-auto"}>
           <div className="flex flex-wrap gap-3 items-center justify-center">
             <div className="flex items-center px-2">
               <div className="w-4 h-4 bg-zinc-400 mr-2 rounded" />
@@ -1455,7 +1455,7 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
             )}
 
             {/* FLOATING CONTROL BAR - Desktop only */}
-            <div className={`${isMobile ? "hidden" : "fixed bottom-5 left-1/2 -translate-x-1/2 z-40"}`}>
+            <div className={`${isMobile ? "hidden" : embedded ? "absolute bottom-5 left-1/2 -translate-x-1/2 z-40" : "fixed bottom-5 left-1/2 -translate-x-1/2 z-40"}`}>
               <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md rounded-full px-6 py-4 shadow-xl border border-zinc-200 dark:border-zinc-800 flex items-center gap-4">
                 {/* Step Progress Indicator - Compact */}
                 {steps.length > 0 && (
