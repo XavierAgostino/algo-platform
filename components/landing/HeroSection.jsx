@@ -10,7 +10,7 @@ import { useState, useEffect } from "react";
 export function HeroSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [iframeError, setIframeError] = useState(false);
-  const [iframeSrc, setIframeSrc] = useState('/shortest-path');
+  const [iframeSrc, setIframeSrc] = useState('/shortest-path?embedded=true');
 
   useEffect(() => {
     // Use absolute URL in production (Vercel)
@@ -18,7 +18,7 @@ export function HeroSection() {
       const isProduction = window.location.hostname.includes('vercel.app') || 
                           window.location.hostname.includes('algo-platform');
       if (isProduction) {
-        setIframeSrc(`${window.location.origin}/shortest-path`);
+        setIframeSrc(`${window.location.origin}/shortest-path?embedded=true`);
       }
     }
     
@@ -146,6 +146,11 @@ export function HeroSection() {
                   <iframe
                     src={iframeSrc}
                     className="w-full h-[400px] md:h-[500px] lg:h-[600px] border-0"
+                    style={{ 
+                      display: 'block',
+                      minHeight: '400px',
+                      background: 'transparent'
+                    }}
                     title="Shortest Path Visualizer Preview"
                     loading="lazy"
                     onError={() => {
@@ -153,7 +158,7 @@ export function HeroSection() {
                       setIframeError(true);
                       setIsLoading(false);
                     }}
-                    onLoad={() => {
+                    onLoad={(e) => {
                       console.log('Iframe loaded successfully', iframeSrc);
                       setIsLoading(false);
                     }}

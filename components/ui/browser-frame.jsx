@@ -61,7 +61,7 @@ export function BrowserFrame({
       )}
 
       {/* Content Area */}
-      <div className="relative bg-background">
+      <div className="relative bg-background" style={{ minHeight: '400px' }}>
         {children}
       </div>
     </div>

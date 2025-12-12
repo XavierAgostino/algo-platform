@@ -29,7 +29,7 @@ import { Play, Pause, SkipForward, RotateCcw, Eye, EyeOff, Settings, RefreshCw, 
 // Import Next.js Link
 import Link from "next/link";
 
-const ShortestPathVisualizer = () => {
+const ShortestPathVisualizer = ({ embedded = false }) => {
   // =========================
   //       GRAPH STATE (Component-managed)
   // =========================
@@ -1040,7 +1040,7 @@ const ShortestPathVisualizer = () => {
   // =========================
 
   return (
-    <div className="flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950">
+    <div className={embedded ? "flex flex-col h-full bg-zinc-100 dark:bg-zinc-950 overflow-hidden" : "flex flex-col min-h-screen bg-zinc-100 dark:bg-zinc-950"}>
       {/* FLOATING NAVBAR */}
       <div className="fixed top-2 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1rem)] sm:w-auto max-w-[calc(100vw-2rem)] overflow-visible">
         <FloatingNav>
