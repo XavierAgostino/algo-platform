@@ -5,7 +5,7 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
@@ -29,11 +29,13 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --brand: 210 100% 50%;
+    --brand-foreground: 213 100% 60%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
@@ -56,6 +58,12 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+    --brand: 213 100% 60%;
+    --brand-foreground: 210 100% 50%;
+  }
+  .theme {
+    --animate-appear-zoom: appear-zoom 0.8s ease-out forwards;
+    --animate-appear: appear 0.5s ease-out forwards;
   }
 }
 
@@ -157,3 +165,32 @@ code {
   font-weight: 900;
 }
 
+/* Hide Next.js portal containers when they have zero dimensions */
+nextjs-portal[style*="width: 0px"],
+nextjs-portal[style*="height: 0px"] {
+  display: none;
+  pointer-events: none;
+}
+
+@theme inline {
+  @keyframes appear-zoom {
+  0% {
+    opacity: 0;
+    transform: scale(0.98);
+    }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    }
+  }
+  @keyframes appear {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+    }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    }
+  }
+}

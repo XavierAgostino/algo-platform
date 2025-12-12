@@ -1,10 +1,27 @@
-# AlgoPlatform
+# <img src="./public/favicon-32x32.png" alt="AlgoPlatform Logo" width="32" height="32" /> AlgoPlatform
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-blue)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue)](https://www.typescriptlang.org/)
 
 A comprehensive, interactive platform for visualizing and understanding computer science algorithms through step-by-step visual demonstrations. Built to make complex algorithms accessible to students, educators, and learners worldwide.
 
 ![AlgoPlatform Dashboard](./public/homescreen.png)
 
 **Live Demo: [algo-platform.vercel.app](https://algo-platform.vercel.app)**
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Getting Started](#getting-started)
+- [How to Use](#how-to-use)
+- [Technologies](#technologies)
+- [Project Structure](#project-structure)
+- [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [License](#license)
 
 ## Overview
 
@@ -16,7 +33,7 @@ The application is fully responsive and works seamlessly on desktop, tablet, and
 
 ## Motivation
 
-While studying for Harvard's COMPSCI 1240 (Design and Analysis of Algorithms) Midterm, I found myself struggling to fully understand the nuances of shortest path algorithms by just reading textbooks or watching lecture videos. I searched for interactive tools that could help me visualize these algorithms step-by-step, but couldn't find any that matched what I needed.
+While studying for Harvard's COMPSCI 1240 (Data Structures and Algorithms) Midterm, I found myself struggling to fully understand the nuances of shortest path algorithms by just reading textbooks or watching lecture videos. I searched for interactive tools that could help me visualize these algorithms step-by-step, but couldn't find any that matched what I needed.
 
 So I decided to build one myself. This project was born out of a genuine need to better understand fundamental algorithms through visualization. As I continued developing the tool and exploring additional algorithm categories, the project naturally evolved into a platform—a unified hub where students can access multiple algorithm visualizers in one place.
 
@@ -149,40 +166,75 @@ Visualization Modes
 
 ## Getting Started
 
-### Live Demo
+### Quick Start
 
-The easiest way to use AlgoPlatform is through the live demo:
-**[algo-platform.vercel.app](https://algo-platform.vercel.app)**
+The easiest way to use AlgoPlatform is through the live demo - no installation required:
 
-The application works in any modern web browser on desktop, tablet, or mobile devices. No installation required.
+**[Try it now: algo-platform.vercel.app](https://algo-platform.vercel.app)**
 
-### Local Development
+The application works in any modern web browser on desktop, tablet, or mobile devices.
 
-If you want to run the application locally or contribute to the project:
+### Prerequisites
 
-**Prerequisites**
-- Node.js version 18.0 or higher
-- npm version 9.0 or higher
+- **Node.js** >= 18.0
+- **npm** >= 9.0 (or **yarn** / **pnpm**)
 
-**Installation Steps**
+### Installation
 
-1. Clone the repository
+1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/algo-platform.git
+   git clone https://github.com/XavierAgostino/algo-platform.git
    cd algo-platform
    ```
 
-2. Install dependencies
+2. **Install dependencies**
    ```bash
    npm install
+   # or
+   yarn install
+   # or
+   pnpm install
    ```
 
-3. Start the development server
+3. **Start the development server**
    ```bash
    npm run dev
+   # or
+   yarn dev
+   # or
+   pnpm dev
    ```
 
-4. Open your browser and navigate to `http://localhost:3000`
+4. **Open your browser**
+   
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+### Build for Production
+
+```bash
+npm run build
+npm start
+```
+
+### Troubleshooting
+
+**Port already in use?**
+```bash
+# Use a different port
+npm run dev -- -p 3001
+```
+
+**Dependencies installation issues?**
+```bash
+# Clear cache and reinstall
+rm -rf node_modules package-lock.json
+npm install
+```
+
+**Build errors?**
+- Ensure you're using Node.js 18+ 
+- Clear `.next` directory: `rm -rf .next`
+- Rebuild: `npm run build`
 
 ## How to Use
 
@@ -308,18 +360,26 @@ The platform is actively being developed with plans to add:
 
 ## Contributing
 
-This project is built as an educational tool for the global learning community. Contributions that improve the educational experience, accessibility, or functionality are welcome.
+We welcome contributions! This project is built as an educational tool for the global learning community. Contributions that improve the educational experience, accessibility, or functionality are welcome.
 
-**How to Contribute**
+Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature-name`)
-3. Make your changes with clear commit messages
-4. Test your changes thoroughly
-5. Push to your branch (`git push origin feature/your-feature-name`)
-6. Open a Pull Request with a detailed description
+### Quick Contribution Guide
 
-**Contribution Ideas**
+1. **Fork the repository**
+2. **Create a feature branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Make your changes** with clear commit messages
+4. **Test your changes** thoroughly
+5. **Push to your branch**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+6. **Open a Pull Request** with a detailed description
+
+### Contribution Ideas
 
 - Additional algorithm implementations
 - New algorithm categories and tools
@@ -331,6 +391,14 @@ This project is built as an educational tool for the global learning community. 
 - Export/import graph functionality
 - Algorithm comparison mode
 - Mobile experience improvements
+
+### Development Guidelines
+
+- Follow existing code style and patterns
+- Add comments for complex logic
+- Update documentation for new features
+- Test on multiple browsers and devices
+- Ensure responsive design works on mobile
 
 ## Browser Support
 
@@ -371,8 +439,17 @@ The platform is inspired by the need for better educational tools in algorithm v
 
 ## Support
 
-For questions, bug reports, or feature requests, please open an issue on the GitHub repository.
+- **Bug Reports**: [Open an issue](https://github.com/XavierAgostino/algo-platform/issues/new?template=bug_report.md)
+- **Feature Requests**: [Open an issue](https://github.com/XavierAgostino/algo-platform/issues/new?template=feature_request.md)
+- **Questions**: [Open a discussion](https://github.com/XavierAgostino/algo-platform/discussions)
+- **Security Issues**: Please email security concerns privately (do not open a public issue)
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a list of changes and version history.
 
 ---
 
-Built with Next.js, React, and Tailwind CSS. Designed for education.
+**Built with Next.js, React, and Tailwind CSS. Designed for education.**
+
+**Star this repo if you find it helpful!**

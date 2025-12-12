@@ -9,33 +9,36 @@ import {
  * Listens for window resize events to keep mobile state in sync with viewport
  */
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768 ||
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent
-      );
-  });
+  // Always start with false to match SSR, then update after mount
+  const [isMobile, setIsMobile] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const handleResize = () => {
-      const mobile = window.innerWidth < 768 ||
+    
+    setMounted(true);
+    
+    const checkMobile = () => {
+      return window.innerWidth < 768 ||
         /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
           navigator.userAgent
         );
-      setIsMobile(mobile);
     };
 
+    const handleResize = () => {
+      setIsMobile(checkMobile());
+    };
+
+    // Set initial mobile state after mount
+    setIsMobile(checkMobile());
+    
     window.addEventListener("resize", handleResize);
-    // Call once to ensure initial state is correct
-    handleResize();
 
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  return isMobile;
+  // Return false during SSR and initial client render to prevent hydration mismatch
+  return mounted ? isMobile : false;
 }
 
 /**
