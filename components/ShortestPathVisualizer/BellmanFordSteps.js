@@ -2,7 +2,6 @@
  * Generate the step-by-step instructions (array of steps) for Bellman-Ford.
  * Return an array of step objects, and also set the final shortestPathResult in the parent.
  */
-import { getNeighbors } from './graphHelpers';
 
 export function generateBellmanFordSteps({
   nodes,

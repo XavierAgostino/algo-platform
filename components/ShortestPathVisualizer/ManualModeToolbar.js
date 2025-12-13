@@ -56,7 +56,6 @@ const ManualModeToolbar = ({
   };
 
   const activeMode = getActiveMode();
-  const hasActiveOperation = activeMode !== null;
 
   // Tool button component for consistency
   const ToolButton = ({ 

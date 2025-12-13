@@ -1018,7 +1018,7 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
     };
-  }, [originalDimensions, graphBounds, nodes.length, graphParams.graphType, edges.length]);
+  }, [originalDimensions, graphBounds, nodes.length, graphParams.graphType, graphParams.minWeight, graphParams.maxWeight, edges.length]);
 
   // =========================
   //   KEYBOARD SHORTCUTS

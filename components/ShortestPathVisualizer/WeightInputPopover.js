@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Minus, Plus, Check, X } from "lucide-react";
 
 /**
@@ -15,6 +15,19 @@ const WeightInputPopover = ({
 }) => {
   const [weight, setWeight] = useState(initialWeight);
   const inputRef = useRef(null);
+
+  const handleConfirm = useCallback(() => {
+    const numWeight = parseFloat(weight);
+    if (isNaN(numWeight)) {
+      // Show error state or just use default
+      onConfirm(initialWeight);
+    } else if (!allowNegative && numWeight < 0) {
+      // Force positive if negative not allowed
+      onConfirm(Math.abs(numWeight));
+    } else {
+      onConfirm(numWeight);
+    }
+  }, [weight, onConfirm, initialWeight, allowNegative]);
 
   // Reset weight when popover opens
   useEffect(() => {
@@ -44,20 +57,7 @@ const WeightInputPopover = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, weight, onCancel]);
-
-  const handleConfirm = () => {
-    const numWeight = parseFloat(weight);
-    if (isNaN(numWeight)) {
-      // Show error state or just use default
-      onConfirm(initialWeight);
-    } else if (!allowNegative && numWeight < 0) {
-      // Force positive if negative not allowed
-      onConfirm(Math.abs(numWeight));
-    } else {
-      onConfirm(numWeight);
-    }
-  };
+  }, [isOpen, onCancel, handleConfirm]);
 
   const incrementWeight = () => {
     setWeight((prev) => {

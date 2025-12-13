@@ -51,7 +51,14 @@ export function HeroSection() {
         "min-h-screen flex items-center"
       )}
     >
-      <div className="relative mx-auto max-w-[1280px] flex flex-col gap-12 lg:gap-24 w-full">
+      {/* Deep space gradient background - only in dark mode */}
+      <div 
+        className="absolute inset-0 pointer-events-none z-0 dark:opacity-100 opacity-0 transition-opacity duration-500"
+        style={{
+          background: "linear-gradient(135deg, rgb(10, 6, 19) 0%, rgb(21, 13, 39) 100%)"
+        }}
+      />
+      <div className="relative mx-auto max-w-[1280px] flex flex-col gap-12 lg:gap-24 w-full z-10">
         <div className="relative z-10 flex flex-col items-center gap-6 pt-8 md:pt-16 text-center lg:gap-12">
           {/* Heading */}
           <h1
@@ -176,25 +183,6 @@ export function HeroSection() {
             </div>
           </div>
         </div>
-      </div>
-      {/* Background Purple Gradient Glow */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className={cn(
-            "absolute left-1/2 h-[512px] w-[60%] -translate-x-1/2 -top-[128px] scale-[2.5] rounded-[50%] transition-all duration-700 ease-out",
-            "bg-[radial-gradient(ellipse_at_center,_rgba(168,85,247,0.5)_10%,_rgba(168,85,247,0)_60%)] sm:h-[512px]",
-            isMounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
-          )}
-          style={{ transitionDelay: "700ms" }}
-        />
-        <div
-          className={cn(
-            "absolute left-1/2 h-[256px] w-[40%] -translate-x-1/2 -top-[128px] scale-[2] rounded-[50%] transition-all duration-700 ease-out",
-            "bg-[radial-gradient(ellipse_at_center,_rgba(139,92,246,0.3)_10%,_rgba(139,92,246,0)_60%)] sm:h-[256px]",
-            isMounted ? "opacity-100 scale-100" : "opacity-0 scale-95"
-          )}
-          style={{ transitionDelay: "700ms" }}
-        />
       </div>
     </section>
   );

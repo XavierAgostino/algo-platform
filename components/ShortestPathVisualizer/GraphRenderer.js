@@ -147,8 +147,8 @@ function GraphRenderer({
   // RENDER EDGES - uses memoized processedEdges
   const renderEdges = () => {
     return processedEdges.map(edge => {
-      const { 
-        sourceX, sourceY, targetX, targetY, 
+      const {
+        targetX, targetY,
         endTangentAngle, adjustedLabelX, adjustedLabelY,
         source, target, bezierPath
       } = edge;

@@ -100,8 +100,6 @@ export function generateDijkstraSteps({
     const neighbors = getNeighbors(currentId, edges, isDirected);
     for (const neighbor of neighbors) {
       const { nodeId: target, weight, edgeId: id } = neighbor;
-      // Find the actual edge object for rendering purposes
-      const edge = edges.find(e => e.id === id);
       
       // If negative weight, skip for Dijkstra
       if (weight < 0) {
