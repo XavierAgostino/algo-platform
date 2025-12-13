@@ -79,7 +79,8 @@ export function generateRandomGraph({ svgRef, graphParams, algorithm }) {
   let finalNodes = newNodes;
   if (graphType === 'spatial') {
     // Use fewer iterations for faster, more stable layout
-    finalNodes = applyForceDirected(newNodes, newEdges, svgWidth, svgHeight, 80);
+    // Pass isMobile for optimized mobile spacing
+    finalNodes = applyForceDirected(newNodes, newEdges, svgWidth, svgHeight, 80, isMobile);
     
     // Recalculate edge weights after force-directed layout using new positions
     newEdges = newEdges.map(edge => {

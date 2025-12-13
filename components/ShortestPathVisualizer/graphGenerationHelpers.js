@@ -172,7 +172,7 @@ export function generateCircularNodes(nodeCount, svgWidth, svgHeight, isMobile) 
 /**
  * Generate nodes in a spatial/scattered layout (like cities on a map)
  * Uses collision detection to ensure nodes don't overlap
- * 
+ *
  * @param {number} nodeCount - Number of nodes to generate
  * @param {number} svgWidth - SVG container width
  * @param {number} svgHeight - SVG container height
@@ -181,14 +181,17 @@ export function generateCircularNodes(nodeCount, svgWidth, svgHeight, isMobile) 
  */
 export function generateSpatialNodes(nodeCount, svgWidth, svgHeight, isMobile) {
   const nodes = [];
-  const padding = Math.min(svgWidth, svgHeight) * 0.1; // 10% padding from edges
-  const minDistance = isMobile ? 80 : 100; // Minimum distance between nodes
+  // Use less padding on mobile to maximize usable space
+  const padding = Math.min(svgWidth, svgHeight) * (isMobile ? 0.06 : 0.1);
+  // Smaller minimum distance on mobile to allow more spread
+  const minDistance = isMobile ? 60 : 100;
   const maxAttempts = 100; // Maximum attempts to place each node
-  
+
   // Calculate center and use it as a bias for initial placement
   const centerX = svgWidth / 2;
   const centerY = svgHeight / 2;
-  const placementRadius = Math.min(svgWidth, svgHeight) * 0.35; // Start nodes within 35% of center
+  // Use more of the viewport on mobile (45% vs 35%)
+  const placementRadius = Math.min(svgWidth, svgHeight) * (isMobile ? 0.45 : 0.35);
   
   for (let i = 0; i < nodeCount; i++) {
     let placed = false;
@@ -429,100 +432,121 @@ export function getEuclideanWeight(nodeA, nodeB, viewportScale, minWeight = 1, m
 }
 
 /**
- * Apply force-directed layout to nodes for organic, natural positioning
+ * Apply force-directed layout with VARIABLE edge lengths
+ * This ensures the final graph has varied edge weights (short vs long paths)
  * Uses simple physics simulation: repulsion, springs, and center gravity
- * 
+ *
  * @param {Array} nodes - Array of node objects (will be modified)
  * @param {Array} edges - Array of edge objects
  * @param {number} svgWidth - SVG container width
  * @param {number} svgHeight - SVG container height
- * @param {number} iterations - Number of simulation iterations (default: 100)
+ * @param {number} iterations - Number of simulation iterations (default: 80)
+ * @param {boolean} isMobile - Whether device is mobile (default: false)
  * @returns {Array} Updated nodes array
  */
-export function applyForceDirected(nodes, edges, svgWidth, svgHeight, iterations = 80) {
+export function applyForceDirected(nodes, edges, svgWidth, svgHeight, iterations = 80, isMobile = false) {
   if (nodes.length === 0) return nodes;
-  
+
   // Create a copy to avoid mutating original
   const updatedNodes = nodes.map(n => ({ ...n }));
-  
-  // Physics constants - tuned for more stable, realistic layout
-  const repulsionStrength = 1500; // Reduced for less aggressive repulsion
-  const springStrength = 0.008; // Slightly reduced for smoother settling
-  const springLength = Math.min(svgWidth, svgHeight) / 4; // Adaptive ideal distance based on viewport
-  const centerGravity = 0.0001; // Increased center pull to keep graph centered
-  const damping = 0.9; // Increased damping for more stability
-  const padding = Math.min(svgWidth, svgHeight) * 0.1; // Keep nodes within bounds
-  
+
+  // Physics constants - adjusted for mobile to spread nodes more
+  const repulsionStrength = isMobile ? 2500 : 2000; // Stronger repulsion on mobile
+  const springStrength = isMobile ? 0.04 : 0.05; // Slightly weaker springs on mobile for more spread
+  const centerGravity = isMobile ? 0.00015 : 0.0002; // Weaker center pull on mobile
+  const damping = 0.85;
+  // Use less padding on mobile to maximize space
+  const padding = Math.min(svgWidth, svgHeight) * (isMobile ? 0.06 : 0.1);
+
   const centerX = svgWidth / 2;
   const centerY = svgHeight / 2;
-  
+
+  // ASSIGN RANDOM TARGET LENGTHS TO EDGES
+  // This forces some edges to be short (low weight) and some long (high weight)
+  const baseDimension = Math.min(svgWidth, svgHeight);
+  // On mobile, use a wider range to create more visual separation
+  const minSpring = baseDimension * (isMobile ? 0.12 : 0.15); // Short edge target
+  const maxSpring = baseDimension * (isMobile ? 0.55 : 0.50); // Long edge target
+
+  // Assign a desired length to each edge for the simulation
+  const edgeLengths = edges.map(() => {
+    const rand = Math.random();
+    if (rand < 0.3) return minSpring; // 30% short edges
+    if (rand < 0.7) return (minSpring + maxSpring) / 2; // 40% medium edges
+    return maxSpring; // 30% long edges
+  });
+
   // Initialize velocities
   const velocities = updatedNodes.map(() => ({ x: 0, y: 0 }));
-  
+
   for (let iter = 0; iter < iterations; iter++) {
     // Calculate forces for each node
     const forces = updatedNodes.map(() => ({ x: 0, y: 0 }));
-    
+
     // Repulsion: all nodes repel each other
     for (let i = 0; i < updatedNodes.length; i++) {
       for (let j = i + 1; j < updatedNodes.length; j++) {
         const dx = updatedNodes[j].x - updatedNodes[i].x;
         const dy = updatedNodes[j].y - updatedNodes[i].y;
-        const distance = Math.sqrt(dx * dx + dy * dy) || 1; // Avoid division by zero
-        
+        const distSq = dx * dx + dy * dy || 1;
+        const distance = Math.sqrt(distSq);
+
         // Coulomb's law: force = k / distance^2
-        const force = repulsionStrength / (distance * distance);
+        const force = repulsionStrength / distSq;
         const fx = (dx / distance) * force;
         const fy = (dy / distance) * force;
-        
+
         forces[i].x -= fx;
         forces[i].y -= fy;
         forces[j].x += fx;
         forces[j].y += fy;
       }
     }
-    
-    // Springs: connected nodes attract each other
-    for (const edge of edges) {
+
+    // Springs: connected nodes attract/repel based on their desired length
+    edges.forEach((edge, edgeIndex) => {
       const source = updatedNodes[edge.source];
       const target = updatedNodes[edge.target];
-      
-      if (!source || !target) continue;
-      
+
+      if (!source || !target) return;
+
       const dx = target.x - source.x;
       const dy = target.y - source.y;
       const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-      
+
+      // Use the specific desired length for THIS edge
+      const restLength = edgeLengths[edgeIndex];
+
       // Hooke's law: force = k * (distance - restLength)
-      const force = springStrength * (distance - springLength);
+      const force = springStrength * (distance - restLength);
       const fx = (dx / distance) * force;
       const fy = (dy / distance) * force;
-      
+
       forces[edge.source].x += fx;
       forces[edge.source].y += fy;
       forces[edge.target].x -= fx;
       forces[edge.target].y -= fy;
-    }
-    
+    });
+
     // Center gravity: weak pull toward center
     for (let i = 0; i < updatedNodes.length; i++) {
       const dx = centerX - updatedNodes[i].x;
       const dy = centerY - updatedNodes[i].y;
-      
+
       forces[i].x += dx * centerGravity;
       forces[i].y += dy * centerGravity;
     }
-    
+
     // Update velocities and positions
     for (let i = 0; i < updatedNodes.length; i++) {
       // Apply damping
       velocities[i].x = (velocities[i].x + forces[i].x) * damping;
       velocities[i].y = (velocities[i].y + forces[i].y) * damping;
-      
+
       // Update position
       updatedNodes[i].x += velocities[i].x;
       updatedNodes[i].y += velocities[i].y;
-      
+
       // Keep nodes within bounds
       updatedNodes[i].x = Math.max(padding, Math.min(svgWidth - padding, updatedNodes[i].x));
       updatedNodes[i].y = Math.max(padding, Math.min(svgHeight - padding, updatedNodes[i].y));
