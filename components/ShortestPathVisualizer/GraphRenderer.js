@@ -68,7 +68,13 @@ function GraphRenderer({
   graphType = 'circular',
   negativeCycleDetected = false,
   isRunning = false,
-  isEditingEdge = false
+  isEditingEdge = false,
+  // Drag handlers
+  onNodeDragStart,
+  onNodeTouchStart,
+  onNodeTouchMove,
+  onNodeTouchEnd,
+  draggedNodeId = null,
 }) {
   // Use custom hook to detect mobile devices with proper resize handling
   const isMobile = useIsMobile();
@@ -352,6 +358,9 @@ function GraphRenderer({
       let strokeWidth = isMobile ? 3 : 2;
       let isAnimated = false;
 
+      // Check if this node is being dragged
+      const isBeingDragged = draggedNodeId === node.id;
+
       // Source node
       if (node.id === selectedSourceNode) {
         fillColor = styles.sourceNodeColor;
@@ -375,10 +384,10 @@ function GraphRenderer({
       const dist = distanceArray[node.id];
       const distanceLabel =
         dist === undefined || dist === Infinity ? "∞" : dist;
-      
+
       // Negative cycle indicator for Bellman-Ford
-      const isPartOfNegativeCycle = algorithm === 'bellmanford' && 
-                                   hasNegativeCycle && 
+      const isPartOfNegativeCycle = algorithm === 'bellmanford' &&
+                                   hasNegativeCycle &&
                                    dist === -Infinity;
 
       // Smaller node radius on mobile
@@ -387,7 +396,10 @@ function GraphRenderer({
       return (
         <g
           key={node.id}
-          onClick={() => onNodeClick(node.id)}
+          onMouseDown={(e) => onNodeDragStart && onNodeDragStart(e, node.id)}
+          onTouchStart={(e) => onNodeTouchStart && onNodeTouchStart(e, node.id)}
+          onTouchMove={(e) => onNodeTouchMove && onNodeTouchMove(e)}
+          onTouchEnd={(e) => onNodeTouchEnd && onNodeTouchEnd(e, node.id)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
@@ -399,7 +411,8 @@ function GraphRenderer({
           aria-label={`Node ${node.label}${
             dist !== undefined ? `, distance: ${distanceLabel}` : ''
           }`}
-          className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          className={`focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${isBeingDragged ? 'cursor-grabbing' : 'cursor-grab'}`}
+          style={{ touchAction: 'none' }}
         >
           {/* Invisible larger hit area for mobile */}
           {isMobile && (
@@ -434,16 +447,28 @@ function GraphRenderer({
             />
           )}
 
+          {/* Drag highlight glow */}
+          {isBeingDragged && (
+            <circle
+              cx={node.x}
+              cy={node.y}
+              r={nodeRadius + 8}
+              fill="rgba(139, 92, 246, 0.3)"
+              stroke="rgba(139, 92, 246, 0.6)"
+              strokeWidth={2}
+            />
+          )}
+
           {/* Main circle */}
           <circle
             cx={node.x}
             cy={node.y}
             r={nodeRadius}
             fill={isPartOfNegativeCycle ? '#db2777' : fillColor}
-            stroke={isPartOfNegativeCycle ? '#be185d' : strokeColor}
-            strokeWidth={strokeWidth}
-            filter="drop-shadow(0px 2px 4px rgba(0,0,0,0.25))"
-            className="transition-all duration-300 ease-out"
+            stroke={isBeingDragged ? '#8b5cf6' : (isPartOfNegativeCycle ? '#be185d' : strokeColor)}
+            strokeWidth={isBeingDragged ? (isMobile ? 4 : 3) : strokeWidth}
+            filter={isBeingDragged ? "drop-shadow(0px 4px 8px rgba(139,92,246,0.4))" : "drop-shadow(0px 2px 4px rgba(0,0,0,0.25))"}
+            className="transition-all duration-150 ease-out"
           />
 
           {/* Node label */}

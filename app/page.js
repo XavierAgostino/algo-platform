@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { ToolsGrid } from "@/components/landing/ToolsGrid";
 import { HowItWorks } from "@/components/landing/HowItWorks";
+import { OpenSource } from "@/components/landing/OpenSource";
 import { Roadmap } from "@/components/landing/Roadmap";
 
 export default function Home() {
@@ -18,6 +19,7 @@ export default function Home() {
       <HeroSection />
       <ToolsGrid />
       <HowItWorks />
+      <OpenSource />
       <Roadmap />
     </main>
   );

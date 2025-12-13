@@ -149,6 +149,12 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
   // Hint tooltip state
   const [showEditHint, setShowEditHint] = useState(true);
 
+  // Drag-and-drop node state
+  const [draggedNodeId, setDraggedNodeId] = useState(null);
+  const [dragStartPosition, setDragStartPosition] = useState(null);
+  const [nodeDragStartPosition, setNodeDragStartPosition] = useState(null);
+  const DRAG_THRESHOLD = 5; // Minimum pixels to distinguish drag from click
+
   // Refs
   const svgRef = useRef(null);
 
@@ -173,6 +179,9 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
   //   TOUCH HANDLING FOR GRAPH
   // =========================
   const handleTouchStart = (e) => {
+    // Don't start canvas pan if we're dragging a node
+    if (draggedNodeId !== null) return;
+
     if (e.touches.length === 1) {
       setIsDragging(true);
       setTouchStartInfo({
@@ -196,6 +205,9 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
   };
 
   const handleTouchMove = (e) => {
+    // Don't pan canvas if we're dragging a node
+    if (draggedNodeId !== null) return;
+
     if (!touchStartInfo) return;
 
     if (isDragging && e.touches.length === 1) {
@@ -236,6 +248,293 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
   const resetGraphTransform = () => {
     setGraphTransform({ scale: 1, x: 0, y: 0 });
   };
+
+  // =========================
+  //   NODE DRAG HANDLERS
+  // =========================
+
+  // Handle node drag start (mouse)
+  const handleNodeDragStart = useCallback((e, nodeId) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    setDraggedNodeId(nodeId);
+    setDragStartPosition({ x: e.clientX, y: e.clientY });
+    setNodeDragStartPosition({ x: node.x, y: node.y });
+  }, [nodes]);
+
+  // Handle node drag move (mouse)
+  const handleNodeDragMove = useCallback((e) => {
+    if (draggedNodeId === null || !dragStartPosition || !nodeDragStartPosition) return;
+
+    const deltaX = e.clientX - dragStartPosition.x;
+    const deltaY = e.clientY - dragStartPosition.y;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Only update if we've exceeded the drag threshold
+    if (distance < DRAG_THRESHOLD) return;
+
+    // Calculate new position in SVG coordinates
+    const newX = nodeDragStartPosition.x + deltaX / graphTransform.scale;
+    const newY = nodeDragStartPosition.y + deltaY / graphTransform.scale;
+
+    // Get viewport bounds with padding
+    const padding = isMobile ? 30 : 40;
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    const maxX = svgRect ? (svgRect.width / graphTransform.scale) - padding : 800;
+    const maxY = svgRect ? (svgRect.height / graphTransform.scale) - padding : 600;
+
+    // Clamp to bounds
+    const clampedX = Math.max(padding, Math.min(maxX, newX));
+    const clampedY = Math.max(padding, Math.min(maxY, newY));
+
+    // Update node position
+    setNodes(prevNodes => {
+      const updatedNodes = prevNodes.map(node =>
+        node.id === draggedNodeId
+          ? { ...node, x: clampedX, y: clampedY }
+          : node
+      );
+
+      // Recalculate edge weights in spatial mode
+      if (graphParams.graphType === 'spatial') {
+        const svgWidth = svgRect?.width || 800;
+        const svgHeight = svgRect?.height || 600;
+
+        setEdges(prevEdges => {
+          return prevEdges.map(edge => {
+            // Only update edges connected to the dragged node
+            if (edge.source === draggedNodeId || edge.target === draggedNodeId) {
+              const sourceNode = updatedNodes.find(n => n.id === edge.source);
+              const targetNode = updatedNodes.find(n => n.id === edge.target);
+
+              if (sourceNode && targetNode) {
+                const newWeight = getEuclideanWeight(
+                  sourceNode,
+                  targetNode,
+                  { width: svgWidth, height: svgHeight },
+                  graphParams.minWeight,
+                  graphParams.maxWeight
+                );
+                return { ...edge, weight: newWeight, status: 'unvisited' };
+              }
+            }
+            return edge;
+          });
+        });
+      }
+
+      return updatedNodes;
+    });
+
+    // Reset algorithm state if running
+    if (isRunning || steps.length > 0) {
+      reset();
+      setShowAnswer(false);
+      if (visualizationMode === 'view') {
+        setVisualizationMode('explore');
+      }
+    }
+  }, [draggedNodeId, dragStartPosition, nodeDragStartPosition, graphTransform.scale, graphParams.graphType, graphParams.minWeight, graphParams.maxWeight, isMobile, isRunning, steps.length, reset, setShowAnswer, visualizationMode, setVisualizationMode]);
+
+  // Handle node drag end (mouse)
+  // Note: handleNodeClick is defined later but this is intentional - it's called conditionally
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleNodeDragEnd = useCallback((e, nodeId) => {
+    if (draggedNodeId === null) return;
+
+    const deltaX = e.clientX - (dragStartPosition?.x || 0);
+    const deltaY = e.clientY - (dragStartPosition?.y || 0);
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // If distance is below threshold, treat as a click
+    if (distance < DRAG_THRESHOLD) {
+      // Clear drag state first
+      setDraggedNodeId(null);
+      setDragStartPosition(null);
+      setNodeDragStartPosition(null);
+
+      // Then handle as click (handleNodeClick is defined below)
+      // eslint-disable-next-line no-use-before-define
+      handleNodeClick(nodeId);
+      return;
+    }
+
+    // Was a drag - clear state
+    setDraggedNodeId(null);
+    setDragStartPosition(null);
+    setNodeDragStartPosition(null);
+
+    // Show feedback
+    if (graphParams.graphType === 'spatial') {
+      setExplanation('Node moved. Edge weights recalculated based on new distances.');
+    } else {
+      setExplanation('Node moved.');
+    }
+  }, [draggedNodeId, dragStartPosition, graphParams.graphType, setExplanation]);
+
+  // Handle node touch start
+  const handleNodeTouchStart = useCallback((e, nodeId) => {
+    // Only handle single touch for node dragging
+    if (e.touches.length !== 1) return;
+
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    setDraggedNodeId(nodeId);
+    setDragStartPosition({ x: touch.clientX, y: touch.clientY });
+    setNodeDragStartPosition({ x: node.x, y: node.y });
+  }, [nodes]);
+
+  // Handle node touch move
+  const handleNodeTouchMove = useCallback((e) => {
+    if (draggedNodeId === null || !dragStartPosition || !nodeDragStartPosition) return;
+    if (e.touches.length !== 1) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - dragStartPosition.x;
+    const deltaY = touch.clientY - dragStartPosition.y;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Only update if we've exceeded the drag threshold
+    if (distance < DRAG_THRESHOLD) return;
+
+    // Calculate new position in SVG coordinates
+    const newX = nodeDragStartPosition.x + deltaX / graphTransform.scale;
+    const newY = nodeDragStartPosition.y + deltaY / graphTransform.scale;
+
+    // Get viewport bounds with padding
+    const padding = isMobile ? 30 : 40;
+    const svgRect = svgRef.current?.getBoundingClientRect();
+    const maxX = svgRect ? (svgRect.width / graphTransform.scale) - padding : 800;
+    const maxY = svgRect ? (svgRect.height / graphTransform.scale) - padding : 600;
+
+    // Clamp to bounds
+    const clampedX = Math.max(padding, Math.min(maxX, newX));
+    const clampedY = Math.max(padding, Math.min(maxY, newY));
+
+    // Update node position
+    setNodes(prevNodes => {
+      const updatedNodes = prevNodes.map(node =>
+        node.id === draggedNodeId
+          ? { ...node, x: clampedX, y: clampedY }
+          : node
+      );
+
+      // Recalculate edge weights in spatial mode
+      if (graphParams.graphType === 'spatial') {
+        const svgWidth = svgRect?.width || 800;
+        const svgHeight = svgRect?.height || 600;
+
+        setEdges(prevEdges => {
+          return prevEdges.map(edge => {
+            // Only update edges connected to the dragged node
+            if (edge.source === draggedNodeId || edge.target === draggedNodeId) {
+              const sourceNode = updatedNodes.find(n => n.id === edge.source);
+              const targetNode = updatedNodes.find(n => n.id === edge.target);
+
+              if (sourceNode && targetNode) {
+                const newWeight = getEuclideanWeight(
+                  sourceNode,
+                  targetNode,
+                  { width: svgWidth, height: svgHeight },
+                  graphParams.minWeight,
+                  graphParams.maxWeight
+                );
+                return { ...edge, weight: newWeight, status: 'unvisited' };
+              }
+            }
+            return edge;
+          });
+        });
+      }
+
+      return updatedNodes;
+    });
+
+    // Reset algorithm state if running
+    if (isRunning || steps.length > 0) {
+      reset();
+      setShowAnswer(false);
+      if (visualizationMode === 'view') {
+        setVisualizationMode('explore');
+      }
+    }
+  }, [draggedNodeId, dragStartPosition, nodeDragStartPosition, graphTransform.scale, graphParams.graphType, graphParams.minWeight, graphParams.maxWeight, isMobile, isRunning, steps.length, reset, setShowAnswer, visualizationMode, setVisualizationMode]);
+
+  // Handle node touch end
+  // Note: handleNodeClick is defined later but this is intentional - it's called conditionally
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleNodeTouchEnd = useCallback((e, nodeId) => {
+    if (draggedNodeId === null) {
+      // No drag in progress, just clear
+      return;
+    }
+
+    // Calculate distance
+    let distance = 0;
+    if (dragStartPosition && e.changedTouches && e.changedTouches.length > 0) {
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - dragStartPosition.x;
+      const deltaY = touch.clientY - dragStartPosition.y;
+      distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    }
+
+    // If distance is below threshold, treat as a click
+    if (distance < DRAG_THRESHOLD) {
+      // Clear drag state first
+      setDraggedNodeId(null);
+      setDragStartPosition(null);
+      setNodeDragStartPosition(null);
+
+      // Then handle as click (handleNodeClick is defined below)
+      // eslint-disable-next-line no-use-before-define
+      handleNodeClick(nodeId);
+      return;
+    }
+
+    // Was a drag - clear state
+    setDraggedNodeId(null);
+    setDragStartPosition(null);
+    setNodeDragStartPosition(null);
+
+    // Show feedback
+    if (graphParams.graphType === 'spatial') {
+      setExplanation('Node moved. Edge weights recalculated based on new distances.');
+    } else {
+      setExplanation('Node moved.');
+    }
+  }, [draggedNodeId, dragStartPosition, graphParams.graphType, setExplanation]);
+
+  // Global mouse move/up handlers for drag (attached to window)
+  useEffect(() => {
+    if (draggedNodeId === null) return;
+
+    const handleMouseMove = (e) => {
+      handleNodeDragMove(e);
+    };
+
+    const handleMouseUp = (e) => {
+      handleNodeDragEnd(e, draggedNodeId);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggedNodeId, handleNodeDragMove, handleNodeDragEnd]);
 
   // =========================
   //   TOGGLE LEGEND & SIDEBAR
@@ -1218,6 +1517,11 @@ const ShortestPathVisualizer = ({ embedded = false }) => {
                     negativeCycleDetected={negativeCycleDetected}
                     isRunning={isRunning}
                     isEditingEdge={isEditingEdge}
+                    onNodeDragStart={handleNodeDragStart}
+                    onNodeTouchStart={handleNodeTouchStart}
+                    onNodeTouchMove={handleNodeTouchMove}
+                    onNodeTouchEnd={handleNodeTouchEnd}
+                    draggedNodeId={draggedNodeId}
                   />
                 </g>
               </svg>

@@ -111,6 +111,8 @@ Manual Design Mode
 - Add and remove nodes interactively
 - Draw edges with custom weights
 - Set source and target nodes
+- **Drag-and-drop nodes** to reposition them freely
+- Real-time edge weight recalculation in spatial mode
 - Full control over graph structure
 - Available on both desktop and mobile devices
 
@@ -131,6 +133,7 @@ Visualization Modes
 - Responsive graph rendering
 - Full manual graph creation support
 - Gesture-based pan and zoom
+- Touch-based node dragging
 - Mobile-specific layout adjustments
 
 ### Platform Features
@@ -264,12 +267,14 @@ npm install
 - Click "Node" to add nodes by clicking on the graph
 - Click "Edge" to connect nodes (click source, then target)
 - Use "Set Source" and "Set Target" to mark special nodes
+- **Drag nodes** to reposition them (edge weights auto-update in spatial mode)
 - Press ESC to cancel any active operation
 
 **Mobile**
 - Open the settings drawer
 - Switch to Manual Design mode
 - Use the toolbar buttons to add nodes, edges, and configure your graph
+- **Touch and drag nodes** to reposition them freely
 - All manual creation features are fully supported on mobile devices
 
 ### Learning Tips
